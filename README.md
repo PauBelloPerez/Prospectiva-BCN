@@ -2,6 +2,14 @@
 
 Aplicación local para comparar perfiles de encuestas. Interfaz en catalán; HTML, CSS y JavaScript sin dependencias, servicios externos ni instalación.
 
+## Novedades de la versión 1.5
+
+El selector **Format de l'informe**, junto a las exportaciones, permite elegir A4 automático, vertical u horizontal. En automático, hasta tres columnas de resultados se presentan en vertical; con más columnas se utiliza horizontal. Se cuenta la columna de diferencias cuando está activa.
+
+En horizontal caben hasta ocho columnas de resultados más la columna de etiquetas, con letra de tabla de 9 pt; en vertical se mantienen tres columnas de resultados y 10 pt. Si hay más, se distribuyen en varias tablas sin perder grupos. La diferencia permanece junto a los dos grupos a los que se refiere. Word, HTML y PDF utilizan la orientación elegida; el CSV mantiene todos los grupos en una sola tabla. La preferencia se guarda con el análisis y los JSON anteriores siguen siendo compatibles.
+
+Las dimensiones, el reparto de columnas, los textos y la orientación se comprueban mediante pruebas automatizadas. La revisión visual en Word/PDF sigue pendiente. Si el diálogo de impresión conserva otro ajuste, selecciona la orientación elegida en la aplicación.
+
 ## Corrección y diseño de la versión 1.4.2
 
 - El encabezado reúne los meses de un mismo REO y año en una línea. Por ejemplo: `REO: 1169 · MES: Setembre–Octubre · ANY: 2026`. No presenta cada mes como si fuera un estudio diferente.
@@ -121,7 +129,7 @@ No se calculan inferencia, intervalos de confianza ni errores de diseño muestra
 - **CSV:** tabla con separador punto y coma, UTF-8 con BOM, bases y notas; se puede abrir en Excel. No es un archivo XLSX.
 - **HTML:** informe autónomo con título, tabla, bases y notas. No necesita los archivos de la aplicación.
 - **Word:** archivo `.docx` nativo con tabla y texto editables. Se genera localmente y no depende de una conexión a Internet.
-- **PDF / Imprimeix:** abre la impresión del informe en el navegador; elige «Guardar como PDF». El diseño es A4 vertical. Si el diálogo conserva una preferencia anterior, selecciona A4 y orientación vertical. Puedes desactivar las cabeceras y pies del navegador para evitar añadir fecha o URL.
+- **PDF / Imprimeix:** abre la impresión del informe en el navegador; elige «Guardar como PDF». El diseño utiliza A4 y la orientación del selector «Format de l’informe». Si el diálogo conserva una preferencia anterior, ajústala para que coincida. Puedes desactivar las cabeceras y pies del navegador para evitar añadir fecha o URL.
 
 Las notas incluyen el archivo fuente, filtros, definiciones de grupos, denominadores y ponderación. Puedes editar el título de la tabla antes de exportar.
 

@@ -38,10 +38,15 @@ assert.equal(elements.matrixDialog.open,false);assert.equal(elements.groupEditor
 assert.equal(vm.runInContext('config.groups.length',context),8);assert.equal(vm.runInContext('config.difference',context),false);
 assert.equal(vm.runInContext('config.weight',context),'WEIGHT');assert.equal(vm.runInContext('config.denominator',context),'all');
 assert.equal(vm.runInContext('result.filtered',context),18);
-assert.equal(vm.runInContext('reportData().tables.length',context),3);
+assert.equal(vm.runInContext('reportData().tables.length',context),1);
+assert.equal(vm.runInContext('reportData().orientation',context),'landscape');
 assert.equal(vm.runInContext('reportData().tables.reduce((n,t)=>n+t.headers.length-1,0)',context),8);
+elements.reportOrientation.onchange({target:{value:'portrait'}});
+assert.equal(vm.runInContext('reportData().tables.length',context),3);
+elements.reportOrientation.onchange({target:{value:'landscape'}});
 vm.runInContext("globalThis.saved={app:'ceo-explorador',version:1,config:structuredClone(config),definitions:structuredClone(defs)};validateSaved(saved);applySaved(saved,{});",context);
 assert.equal(vm.runInContext('config.groups.length',context),8);
+assert.equal(vm.runInContext('config.reportOrientation',context),'landscape');
 elements.matrixBtn.onclick();elements.matrixOrigin.value='RECALL';elements.matrixDestination.value='RECALL';elements.matrixApply.onclick();
 assert.equal(elements.matrixError.hidden,false);assert.equal(vm.runInContext('config.groups.length',context),8);
 elements.matrixCancel.onclick();assert.equal(elements.matrixDialog.open,false);

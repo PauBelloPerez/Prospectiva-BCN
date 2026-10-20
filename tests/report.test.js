@@ -22,4 +22,23 @@ test('Metadades abans de cada taula, editables i escapades en HTML i Word',()=>{
  assert.ok(h.includes('REO: &lt;&amp;&gt;'));assert.ok(s.includes('REO: &lt;&amp;&gt;'));
  assert.ok(s.includes('<w:pStyle w:val="StudyMeta"/><w:keepNext/>'));
 });
+test('Automàtic, horitzontal i vertical amb amplades dins dels marges',()=>{
+ assert.equal(R.layout('auto',3).orientation,'portrait');assert.equal(R.layout('auto',4).orientation,'landscape');
+ assert.equal(R.layout('portrait',8).orientation,'portrait');assert.throws(()=>R.layout('invalid'));
+ const page=R.layout('landscape');assert.equal(page.width,16838);assert.equal(page.height,11906);assert.equal(page.tableWidth,14798);
+ for(let n=2;n<=9;n++){const widths=R.widths(n,'landscape');assert.equal(widths.reduce((a,b)=>a+b,0),14798);assert.ok(widths.every(w=>w>0));}
+ const x={title:'Matriu horitzontal',orientation:'landscape',studyLines:['REO: 1169 · MES: Setembre–Octubre · ANY: 2026'],tables:[{headers:['Destinació',...Array.from({length:8},(_,i)=>'Partit '+i)],rows:[{kind:'data',cells:['PSC',...Array(8).fill('100,0 % (120)')]}]}],notes:[]};
+ const files=readZip(R.docx(x)),s=files['word/document.xml'],h=R.html(x);
+ assert.ok(s.includes('w:w="16838" w:h="11906" w:orient="landscape"'));assert.ok(s.includes('<w:tblW w:w="14798"'));
+ assert.ok(files['word/styles.xml'].includes('w:sz w:val="18"'));assert.ok(h.includes('size:A4 landscape'));assert.ok(h.includes('font-size:9pt'));assert.ok(h.includes('Partit 7'));
+ assert.ok(s.includes('Setembre–Octubre'));assert.throws(()=>R.docx({...x,orientation:'portrait'}));
+});
+test('Horitzontal: tots els grups fins a 50, sense duplicats i diferència al costat dels dos primers',()=>{
+ for(let n=1;n<=50;n++)for(const diff of [true,false]){
+  const g=Array.from({length:n},(_,i)=>({name:'Grup '+i,n:20})),sets=R.columnSets(g,diff,'landscape'),columns=sets.flat();
+  assert.deepEqual(columns.filter(c=>c.index!=='difference').map(c=>c.index),Array.from({length:n},(_,i)=>i));
+  assert.ok(sets.every(s=>s.length<=8));
+  if(diff&&n>=2)assert.deepEqual(sets[0].slice(0,3).map(c=>c.index),[0,1,'difference']);
+ }
+});
 console.log(`${passed} proves d'exportació superades (estructura, no renderitzat visual).`);

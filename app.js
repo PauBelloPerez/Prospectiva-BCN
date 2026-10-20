@@ -1,7 +1,7 @@
 'use strict';
 const E=CEO,$=id=>document.getElementById(id),esc=E.escapeHTML;
 let studyLines=[],rows=[],headers=[],defs=Object.create(null),fileName='',isDemo=false,result=null,optionCache=new Map(),currentEdit=null,variableDraft=null,pendingConfig=null;
-const initial=()=>({version:1,title:'Comparació de perfils',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
+const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
 let config=initial();
 function message(text,error=false){$('status').hidden=!text;$('status').className='notice'+(error?' error':'');$('status').textContent=text;}
 function fmt(v,dec=config.decimals){return v===null||v===undefined||!Number.isFinite(v)?'—':v.toLocaleString('ca-ES',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
@@ -31,7 +31,7 @@ function renderGroups(){
  $('globalFilters').innerHTML=config.globalFilters.map((f,i)=>filterHTML(f,i,'global')).join('');
  $('groups').innerHTML=config.groups.map((g,i)=>`<div class="group"><div class="group-head"><input data-group-name="${i}" value="${esc(g.name)}" aria-label="Nom del grup"><span class="badge">n = ${result?result.groups[i].n:'—'}</span><button class="quiet" data-delete-group="${i}" title="Elimina el grup">×</button></div><label class="group-mode">Compleix <select data-group-mode="${i}"><option value="all" ${g.mode==='all'?'selected':''}>totes les condicions</option><option value="any" ${g.mode==='any'?'selected':''}>alguna condició</option></select></label>${g.filters.map((f,j)=>filterHTML(f,j,i)).join('')}${!g.filters.length?'<p class="hint">Tota la mostra filtrada.</p>':''}<button class="add" data-add-filter="${i}">＋ Condició</button></div>`).join('');
  $('weight').innerHTML='<option value="">Sense ponderació</option>'+headers.map(n=>`<option value="${esc(n)}" ${config.weight===n?'selected':''}>${esc(n)}</option>`).join('');
- $('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;
+ $('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;$('reportOrientation').value=config.reportOrientation||'auto';
 }
 function renderPicker(){const query=E.norm($('indicatorSearch').value),list=variables(true).filter(n=>E.norm(n+' '+defs[n].label).includes(query));$('indicatorPicker').innerHTML=list.slice(0,100).map(n=>`<button class="pick ${config.indicators.some(i=>i.variable===n)?'selected':''}" data-pick="${esc(n)}">${config.indicators.some(i=>i.variable===n)?'✓ ':'＋ '}${esc(defs[n].label)}<span class="code">${esc(n)}</span></button>`).join('')+(list.length>100?'<p class="hint">Més de 100 variables. Afina la cerca.</p>':'');
  $('selectedCount').textContent=config.indicators.length;$('selectedIndicators').innerHTML=config.indicators.map((s,i)=>`<div class="selected-item"><div><span>${esc(defs[s.variable]?.label||s.variable)}</span><span><button class="quiet" data-up="${i}" title="Mou amunt">↑</button><button class="quiet" data-configure="${esc(s.variable)}" title="Configura">⚙</button><button class="quiet" data-remove-indicator="${i}" title="Elimina">×</button></span></div>${defs[s.variable]?.type==='number'?`<select data-stat="${i}" aria-label="Estadístic"><option value="mean" ${s.stat==='mean'?'selected':''}>Mitjana</option><option value="median" ${s.stat==='median'?'selected':''}>Mediana</option></select>`:'<span class="hint">Percentatge (n)</span>'}</div>`).join('');
@@ -61,6 +61,8 @@ function notes(){if(!result)return [];return [
  'Anàlisi descriptiva. No s’han calculat intervals de confiança ni tests de significació.'
  ];}
 function renderResults(){
+ const page=CEOReport.layout(config.reportOrientation||'auto',config.groups.length+(config.difference&&config.groups.length>=2?1:0));
+ $('reportLayoutHint').textContent=`Word, PDF i HTML: A4 ${page.orientation==='landscape'?'horitzontal':'vertical'}, lletra de taula ${page.fontSize} pt. Fins a ${page.maxDataColumns} columnes de resultats per taula.`;
  $('studyMetadata').innerHTML=studyLines.map(line=>`<p>${esc(line)}</p>`).join('');
  $('totalCount').textContent=rows.length?fmt(rows.length,0):'—';$('variableCount').textContent=headers.length?fmt(headers.length,0):'—';$('filteredCount').textContent=result?fmt(result.filtered,0):'—';$('groupCount').textContent=result?config.groups.length:'—';
  const warn=[];if(isDemo)warn.push('Exemple amb dades sintètiques. No representa cap onada del CEO.');if(result?.overlap)warn.push(`${result.overlap} entrevistes pertanyen als dos primers grups. Revisa els filtres si vols grups excloents.`);
@@ -138,7 +140,7 @@ document.addEventListener('change',e=>{const ds=e.target.dataset;
  if(ds.groupMode!==undefined){config.groups[Number(ds.groupMode)].mode=e.target.value;render();}
  if(ds.stat!==undefined){config.indicators[Number(ds.stat)].stat=e.target.value;render();}
 });
-for(const [id,key] of [['weight','weight'],['denominator','denominator'],['decimals','decimals'],['difference','difference'],['tableTitle','title']])$(id).onchange=e=>{config[key]=id==='decimals'?Number(e.target.value):id==='difference'?e.target.value==='yes':e.target.value;render();};
+for(const [id,key] of [['weight','weight'],['denominator','denominator'],['decimals','decimals'],['difference','difference'],['tableTitle','title'],['reportOrientation','reportOrientation']])$(id).onchange=e=>{config[key]=id==='decimals'?Number(e.target.value):id==='difference'?e.target.value==='yes':e.target.value;render();};
 $('indicatorSearch').oninput=renderPicker;$('dictionarySearch').oninput=renderDictionary;$('helpBtn').onclick=()=>$('helpDialog').showModal();
 function rawValues(name){return [...new Set(rows.map(r=>r[name]??''))].sort((a,b)=>a.localeCompare(b,'ca',{numeric:true}));}
 function editVariable(name,reset=false){currentEdit=name;const d=reset?E.definition(name):defs[name];variableDraft=structuredClone(d);$('resetVariable').hidden=d.type==='multi';$('variableHeading').textContent=d.label+' · '+name;
@@ -155,7 +157,8 @@ function download(content,name,type){const blob=new Blob([content],{type}),a=doc
 function reportData(){
  if(!result||!config.indicators.length)throw Error('Selecciona indicadors abans d’exportar.');
  const difference=config.difference&&result.groups.length>=2;
- const sets=CEOReport.columnSets(result.groups,difference);
+ const page=CEOReport.layout(config.reportOrientation||'auto',result.groups.length+(difference?1:0));
+ const sets=CEOReport.columnSets(result.groups,difference,page.orientation);
  const tables=sets.map(columns=>{
   const table={label:columns.filter(c=>c.index!=='difference').map(c=>result.groups[c.index].name).join(' · '),headers:['Indicador',...columns.map(c=>c.label)],rows:[]};
   for(const ind of result.indicators){
@@ -172,7 +175,7 @@ function reportData(){
   }
   return table;
  });
- return {title:config.title,studyLines:[...studyLines],tables,notes:notes()};
+ return {title:config.title,orientation:page.orientation,studyLines:[...studyLines],tables,notes:notes()};
 }
 function exportHTML(){return CEOReport.html(reportData());}
 function printReport(){
@@ -189,7 +192,7 @@ $('htmlBtn').onclick=()=>download(exportHTML(),'comparacio_ceo.html','text/html;
 $('wordBtn').onclick=()=>{try{download(CEOReport.docx(reportData()),'comparacio_ceo.docx',CEOReport.mime);}catch(e){message('No s’ha pogut exportar Word: '+e.message,true);}};
 $('copyBtn').onclick=async()=>{const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notes()].join('\n');try{if(navigator.clipboard&&typeof ClipboardItem!=='undefined'){await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([exportHTML()],{type:'text/html'})})]);}else throw Error();message('Taula copiada. Enganxa-la al document.');}catch{const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();message(ok?'Taula copiada com a text amb tabuladors.':'No s’ha pogut copiar. Utilitza l’exportació HTML o CSV.',!ok);}};
 $('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName},null,2),'analisi_ceo.json','application/json');
-function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
+function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
 function usedColumns(s){const used=new Set([...s.config.globalFilters.map(f=>f.variable),...s.config.groups.flatMap(g=>g.filters.map(f=>f.variable)),...s.config.indicators.map(i=>i.variable),...(s.config.weight?[s.config.weight]:[])]);for(const n of [...used])if(s.definitions[n]?.type==='multi'){used.delete(n);for(const src of s.definitions[n].sources)used.add(src);}return [...used];}
 $('configFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(!rows.length)throw Error('Carrega primer el CSV de la nova onada.');const saved=JSON.parse(await f.text());validateSaved(saved);const missing=usedColumns(saved).filter(n=>!headers.includes(n));if(missing.length){pendingConfig=saved;$('mappingFields').innerHTML=missing.map((n,i)=>`<label class="field">${esc(n)}<select data-map-column="${i}" data-old="${esc(n)}"><option value="">Elimina’n els usos</option>${varOptions()}</select></label>`).join('');$('mappingDialog').showModal();}else applySaved(saved,{});}catch(err){message(err.message,true);}finally{e.target.value='';}};
 $('cancelMapping').onclick=()=>{$('mappingDialog').close();pendingConfig=null;};$('applyMapping').onclick=()=>{try{const map=Object.fromEntries([...document.querySelectorAll('[data-map-column]')].map(s=>[s.dataset.old,s.value]));applySaved(pendingConfig,map);$('mappingDialog').close();pendingConfig=null;}catch(e){alert(e.message);}};
