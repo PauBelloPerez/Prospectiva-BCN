@@ -1,6 +1,51 @@
-# Explorador CEO · Observatori
+# Explorador CEO · Prospectiva
 
 Aplicación local para comparar perfiles de encuestas. Interfaz en catalán; HTML, CSS y JavaScript sin dependencias, servicios externos ni instalación.
+
+## Corrección y diseño de la versión 1.4.2
+
+- El encabezado reúne los meses de un mismo REO y año en una línea. Por ejemplo: `REO: 1169 · MES: Setembre–Octubre · ANY: 2026`. No presenta cada mes como si fuera un estudio diferente.
+- Ordena los meses cronológicamente y unifica meses numéricos y etiquetas equivalentes. Los meses no consecutivos se enumeran sin inventar meses intermedios; los años y los REO distintos siguen separados.
+- La aplicación pasa a llamarse **Prospectiva**, con el color principal **#DB2828**, fondos rojos suaves y cabeceras de informe coordinadas en Word, HTML y PDF. Se conserva A4 vertical.
+- El filtro REO sigue disponible como opción. La agrupación de fechas modifica la presentación y no elimina entrevistas ni cambia los cálculos.
+
+## Corrección de la versión 1.4.1
+
+El encabezado REO/MES/ANY se calcula de nuevo con las entrevistas incluidas en los grupos tras aplicar los filtros generales. Ya no enumera automáticamente todos los estudios del archivo si algunos quedan fuera del análisis. Si no queda ninguna entrevista, se indica expresamente y no se recupera la fecha de otra oleada.
+
+En «Delimita la mostra», el selector **Onada · REO** permite elegir una oleada del archivo. La selección se refleja en un filtro general y afecta tanto a los cálculos como al encabezado. Los otros filtros se conservan. «Totes les onades del fitxer» elimina los filtros generales de REO; los filtros específicos de los grupos se mantienen. Si la tabla incluye realmente varias oleadas, se siguen mostrando todas con sus fechas correspondientes.
+
+No se deduce el REO por el nombre del archivo ni se eliminan entrevistas al cargarlo. Se ha probado el caso 1167/1169 con datos sintéticos, selección de REO, filtros de grupos, muestra vacía, recarga de archivos y exportaciones. No se ha podido inspeccionar el contenido del CSV real ni hacer una revisión visual.
+
+## Novedades de la versión 1.4
+
+**Matriu de transferències** crea los grupos automáticamente. Carga el CSV, pulsa este botón en «Construeix els grups» y elige origen (recuerdo) y destino (intención). Todas las categorías válidas de origen presentes en la muestra filtrada se seleccionan inicialmente; puedes desmarcar las que no necesites. Pulsa «Crea la matriu».
+
+Se sustituyen grupos e indicadores y se oculta la diferencia entre los dos primeros grupos. Se conservan filtros generales, peso y denominador. Las columnas representan el origen y las filas el destino; los porcentajes se leen por columnas. Los grupos creados siguen siendo editables en «Veure / editar els grups». Se admiten hasta 50 grupos y pueden guardarse y restaurarse como cualquier análisis. Para recoger nuevas categorías de otra oleada, vuelve a crear la matriz después de cargarla.
+
+El asistente utiliza las categorías recodificadas del diccionario; muestra cuántos casos no tienen origen válido. No recupera automáticamente abstención, indecisión o no respuesta si están marcadas como ausentes: revisa su tratamiento en el diccionario. Si existen varias variables de recuerdo, el asistente pide elegir una. También se pueden cruzar otras dos variables categóricas de respuesta única.
+
+Las exportaciones conservan REO/MES/ANY. El CSV incluye toda la matriz; Word, HTML y PDF distribuyen las columnas en varias tablas A4 verticales. Hay pruebas automatizadas con casos sintéticos para los grupos, filtros, recodificaciones, porcentajes y la integración del asistente. No se ha realizado validación visual en navegador.
+
+## Novedades de la versión 1.3
+
+- El encabezado de la tabla muestra **REO, MES y ANY** del CSV cargado. Se incluye en Word, HTML, PDF, CSV y al copiar la tabla, tanto en texto como en formato enriquecido.
+- Los meses numéricos de 1 a 12 se presentan con su nombre en catalán. Las etiquetas de mes del CSV se conservan; los datos ausentes se indican como «no disponible».
+- Si hay varias combinaciones de REO, MES y ANY, se enumeran sin mezclar los meses y años de distintas filas. Desde la versión 1.4.1 identifican las entrevistas incluidas en los grupos de la tabla; los filtros del análisis siguen documentados en las notas. Si el informe se divide en varias tablas, cada una incluye el encabezado.
+- Estos datos se actualizan al cargar otra oleada y no se sustituyen al importar una configuración guardada. Las recodificaciones del diccionario no alteran la identificación del estudio.
+
+## Novedades de la versión 1.2
+
+- **Word ↓** descarga `comparacio_ceo.docx`: documento Word nativo con título, celdas y notas editables, sin capturas ni conversión de HTML con una extensión falsa.
+- **A4 vertical** en Word, HTML y PDF. Márgenes de 18 mm en el informe; la tabla se ajusta al ancho disponible.
+- El PDF se imprime desde un informe independiente de la interfaz, evitando incluir controles o recortar el título.
+- Las cabeceras se configuran para repetirse al continuar la tabla en otra página; las filas se mantienen juntas cuando caben en una página.
+- Si hay más de tres columnas de resultados, se distribuyen los grupos en varias tablas. La diferencia permanece junto a los dos primeros grupos y todos los demás se conservan en las siguientes tablas. No se reduce la letra para encajar ocho columnas en una página vertical.
+- El nuevo archivo `report-export.js` debe acompañar a `index.html`, `app.js` y `styles.css`, también al subir el proyecto a GitHub.
+
+Para actualizar una carpeta existente, guarda primero la configuración abierta como JSON, copia el contenido de esta carpeta sobre la anterior y recarga la página. No borres la carpeta `.git`. Las configuraciones JSON de las versiones anteriores siguen siendo compatibles.
+
+En Word puedes añadir párrafos antes o después de la tabla, cambiar fuente, colores y bordes, o copiarla a otro documento. Al integrarla, el ancho y la orientación pasan a depender también de la sección de destino.
 
 ## Novedades de la versión 1.1
 
@@ -75,7 +120,8 @@ No se calculan inferencia, intervalos de confianza ni errores de diseño muestra
 - **Copia:** intenta copiar una tabla HTML y texto para pegar en Word o Google Docs; si el navegador lo impide, utiliza HTML o CSV.
 - **CSV:** tabla con separador punto y coma, UTF-8 con BOM, bases y notas; se puede abrir en Excel. No es un archivo XLSX.
 - **HTML:** informe autónomo con título, tabla, bases y notas. No necesita los archivos de la aplicación.
-- **PDF / Imprimeix:** abre la impresión del navegador; elige «Guardar como PDF». El diseño de impresión es A4 horizontal.
+- **Word:** archivo `.docx` nativo con tabla y texto editables. Se genera localmente y no depende de una conexión a Internet.
+- **PDF / Imprimeix:** abre la impresión del informe en el navegador; elige «Guardar como PDF». El diseño es A4 vertical. Si el diálogo conserva una preferencia anterior, selecciona A4 y orientación vertical. Puedes desactivar las cabeceras y pies del navegador para evitar añadir fecha o URL.
 
 Las notas incluyen el archivo fuente, filtros, definiciones de grupos, denominadores y ponderación. Puedes editar el título de la tabla antes de exportar.
 
@@ -87,14 +133,22 @@ Las notas incluyen el archivo fuente, filtros, definiciones de grupos, denominad
 | `styles.css` | Diseño, adaptación a pantallas pequeñas e impresión |
 | `engine.js` | Lectura de CSV, diccionario base y cálculos descriptivos |
 | `app.js` | Controles, editor, configuraciones y exportaciones |
+| `report-export.js` | Informe HTML/PDF y generación de DOCX editable en A4 vertical |
 | `tests/engine.test.js` | Pruebas de cálculo y lectura de archivos |
+| `tests/metadata.test.js` | Identificación de estudios, fechas y campos ausentes |
+| `tests/editor.test.js` | Estado del editor e integración de exportaciones con DOM simulado |
+| `tests/report.test.js` | ZIP de DOCX, estructura, orientación y distribución de tablas |
 | `package.json` | Comando de pruebas, sin dependencias |
 
 Para ejecutar las pruebas con Node.js instalado: `npm test` o `node tests/engine.test.js`. No necesitas Node para usar la aplicación.
 
 ## Validación de esta entrega
 
+En la versión 1.3 se han comprobado los encabezados en CSV, HTML/PDF, Word y portapapeles, la actualización al cambiar de oleada e importar una configuración, los datos ausentes y las combinaciones de estudios y fechas. Son pruebas automatizadas; no se ha realizado una nueva revisión visual en Word o en el navegador.
+
 Se han superado 14 pruebas automatizadas del motor con casos sintéticos: CSV con comillas y saltos de línea, rechazo de registros inconsistentes, códigos/etiquetas, extremos de escalas, no respuesta, bases, pesos, denominadores, filtros, recodificación, respuesta múltiple, bloqueo de orientación, escapado de exportaciones, escalas de líderes, diagnóstico y restauración de valores. También se ha probado el estado del editor (restablecer en borrador, cancelar, aplicar y mostrar diagnóstico) con un DOM simulado. Se ha comprobado la sintaxis de JavaScript. Estas pruebas no sustituyen la revisión visual en un navegador.
+
+En la versión 1.2 se han superado otras 7 pruebas de exportación: ZIP y CRC, relaciones de DOCX, orientación vertical, ancho de tabla, cabeceras, celdas editables, escapado de texto y distribución de hasta seis grupos. Se ha comprobado la integración con la tabla del análisis y se han analizado las siete partes XML con un parser independiente. El runtime de renderizado de documentos no estuvo disponible, por lo que no se ha verificado visualmente el resultado en Word ni en PDF. La paginación final puede variar entre Word, LibreOffice y el navegador.
 
 La descarga de `REO1169_microdades_anonimitzades.csv` falló en el entorno de elaboración por un error de resolución de red. No se han inspeccionado sus filas ni validado los resultados contra los n=142 y n=119 de la tabla de referencia. El archivo real no se incluye en el ZIP. El navegador de pruebas tampoco estuvo disponible, por lo que queda pendiente la comprobación visual y funcional en un navegador real. Son limitaciones de validación, no resultados que deban darse por comprobados.
 

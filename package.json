@@ -1,1 +1,1 @@
-{"name":"ceo-explorador","version":"1.1.0","private":true,"scripts":{"test":"node tests/engine.test.js && node tests/editor.test.js"},"description":"Explorador local de microdatos CEO, sin dependencias"}
+{"name":"ceo-explorador","version":"1.4.2","private":true,"scripts":{"test":"node tests/engine.test.js && node tests/metadata.test.js && node tests/study-scope.test.js && node tests/matrix.test.js && node tests/editor.test.js && node tests/report.test.js"},"description":"Explorador local de microdatos CEO, sin dependencias"}

@@ -74,6 +74,13 @@ function match(row,filter,defs){
 }
 const matches=(row,filters,defs,mode='all')=>!filters.length||(mode==='any'?filters.some(f=>match(row,f,defs)):filters.every(f=>match(row,f,defs)));
 function options(rows,name,defs){const map=new Map();for(const r of rows){const c=cell(r,name,defs);if(c.missing)continue;if(c.values){for(const [k,l] of c.values)map.set(k,l);}else map.set(c.key,c.label);}const d=defs[name];const order=new Map(Object.values(d.labels||{}).map((l,i)=>[norm(l),i]));return [...map].map(([key,label])=>({key,label})).sort((a,b)=>{if(order.has(a.key)&&order.has(b.key))return order.get(a.key)-order.get(b.key);return a.label.localeCompare(b.label,'ca',{numeric:true});});}
+function categoryGroups(rows,name,defs,filters=[]){
+ if(defs[name]?.type!=='category')throw Error('Tria una variable categòrica de resposta única.');
+ const filtered=rows.filter(row=>matches(row,filters,defs)),counts=new Map();let missing=0;
+ for(const row of filtered){const x=cell(row,name,defs);if(x.missing){missing++;continue;}counts.set(x.key,(counts.get(x.key)||0)+1);}
+ const categories=options(filtered,name,defs).map(c=>({...c,n:counts.get(c.key),group:{name:c.label,mode:'all',filters:[{variable:name,op:'in',values:[c.key]}]}}));
+ return {categories,missing,total:filtered.length};
+}
 function median(items,weighted){const a=[...items].sort((a,b)=>a.v-b.v);if(!a.length)return null;if(!weighted){const n=a.length;return n%2?a[(n-1)/2].v:(a[n/2-1].v+a[n/2].v)/2;}const half=a.reduce((s,x)=>s+x.w,0)/2;let s=0;for(const x of a){s+=x.w;if(s>=half)return x.v;}return a.at(-1).v;}
 function summarize(rows,name,defs,settings){
  const d=defs[name];let valid=0,missing=0,unknown=0,invalidWeight=0,totalWeight=0,validWeight=0,sum=0,items=[],counts=new Map();
@@ -85,7 +92,8 @@ function summarize(rows,name,defs,settings){
 }
 function analyze(rows,defs,config){
  const filtered=rows.filter(r=>matches(r,config.globalFilters||[],defs));const groups=config.groups.map(g=>({...g,rows:filtered.filter(r=>matches(r,g.filters||[],defs,g.mode))}));
- const result={filtered:filtered.length,groups:groups.map(({rows,...g})=>({...g,n:rows.length})),indicators:[],overlap:0};
+ const analyzedRows=[...new Set(groups.flatMap(g=>g.rows))];
+ const result={filtered:filtered.length,groups:groups.map(({rows,...g})=>({...g,n:rows.length})),indicators:[],overlap:0,studyLines:analyzedRows.length?studyMetadata(analyzedRows,Object.keys(rows[0]||{}),'Estudis / dates de la mostra analitzada:'):['Sense entrevistes als grups seleccionats. No es pot identificar una onada per a aquesta taula.']};
  if(groups.length>=2){const a=new Set(groups[0].rows);result.overlap=groups[1].rows.filter(r=>a.has(r)).length;}
  for(const sel of config.indicators){const name=sel.variable,d=defs[name];if(!d)throw Error(`Indicador absent: ${name}`);if(d.type==='number'&&!d.confirmed){result.indicators.push({name,label:d.label,type:d.type,blocked:true});continue;}
   const stats=groups.map(g=>summarize(g.rows,name,defs,config));const cats=options(filtered,name,defs);result.indicators.push({name,label:d.label,type:d.type,stat:sel.stat||'mean',stats,categories:cats});
@@ -97,8 +105,31 @@ function diagnostics(rows,name,d){
  for(const row of rows){const raw=String(row[name]??'');const x=decode(raw,d);if(x.reason==='unknown')counts.set(raw,(counts.get(raw)||0)+1);}
  return [...counts].map(([raw,n])=>({raw,n})).sort((a,b)=>b.n-a.n||a.raw.localeCompare(b.raw,'ca',{numeric:true}));
 }
+// Provenance comes from the loaded CSV, independently of recoding and saved analyses.
+function studyMetadata(rows,headers,multipleLabel='Estudis / dates del fitxer carregat:'){
+ const keys=['REO','MES','ANY'].map(name=>headers.find(h=>String(h).trim().toUpperCase()===name));
+ const months=['gener','febrer','març','abril','maig','juny','juliol','agost','setembre','octubre','novembre','desembre'];
+ const studies=new Map();
+ for(const row of rows){
+  let [reo,month,year]=keys.map(key=>key===undefined?'':String(row[key]??'').trim());
+  if(/^\d{1,2}$/.test(month)&&+month>=1&&+month<=12)month=months[+month-1];
+  const studyKey=JSON.stringify([reo,year]);
+  if(!studies.has(studyKey))studies.set(studyKey,{reo,year,months:new Map()});
+  const monthKey=norm(month),index=months.findIndex(m=>norm(m)===monthKey);
+  const study=studies.get(studyKey);
+  if(!study.months.has(monthKey))study.months.set(monthKey,{label:month||'no disponible',index});
+ }
+ if(!studies.size)return ['REO: no disponible · MES: no disponible · ANY: no disponible'];
+ const lines=[...studies.values()].map(study=>{
+  const dates=[...study.months.values()].sort((a,b)=>(a.index<0?12:a.index)-(b.index<0?12:b.index));
+  const consecutive=dates.length>1&&dates.every((m,i)=>m.index>=0&&(!i||m.index===dates[i-1].index+1));
+  const month=consecutive?dates[0].label+'–'+dates.at(-1).label:dates.map(m=>m.label).join(' / ');
+  return `REO: ${study.reo||'no disponible'} · MES: ${month} · ANY: ${study.year||'no disponible'}`;
+ });
+ return lines.length>1?[multipleLabel,...lines]:lines;
+}
 function escapeHTML(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function csvCell(v){let s=String(v??'');if(/^[=+@-]/.test(s)&&number(s)===null)s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}
-const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,summarize,analyze,diagnostics,escapeHTML,csvCell};
+const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,categoryGroups,summarize,analyze,diagnostics,studyMetadata,escapeHTML,csvCell};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.CEO=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

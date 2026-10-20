@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict'),E=require('../engine.js');
+const headers=['REO','MES','ANY'];
+assert.deepEqual(E.studyMetadata([{REO:'1200',MES:'03',ANY:'2026'},{REO:'1200',MES:'3',ANY:'2026'}],headers),['REO: 1200 · MES: març · ANY: 2026']);
+assert.deepEqual(E.studyMetadata([{reo:'1200',mes:'Octubre',any:'2026'}],['reo','mes','any']),['REO: 1200 · MES: Octubre · ANY: 2026']);
+assert.deepEqual(E.studyMetadata([{REO:'1200',MES:'12',ANY:'2025'},{REO:'1300',MES:'1',ANY:'2026'}],headers),['Estudis / dates del fitxer carregat:','REO: 1200 · MES: desembre · ANY: 2025','REO: 1300 · MES: gener · ANY: 2026']);
+for(const rows of [[],[{}],[{REO:null,MES:' ',ANY:undefined}]])assert.deepEqual(E.studyMetadata(rows,headers),['REO: no disponible · MES: no disponible · ANY: no disponible']);
+assert.deepEqual(E.studyMetadata([{REO:' 1200 ',MES:'13'}],headers),['REO: 1200 · MES: 13 · ANY: no disponible']);
+assert.deepEqual(E.studyMetadata([{MES:'0',ANY:'2026'}],headers),['REO: no disponible · MES: 0 · ANY: 2026']);
+const months=values=>values.map(MES=>({REO:'1169',MES,ANY:'2026'}));
+assert.deepEqual(E.studyMetadata(months(['Octubre','Setembre','Octubre']),headers),['REO: 1169 · MES: Setembre–Octubre · ANY: 2026']);
+assert.deepEqual(E.studyMetadata(months(['Setembre','09','setembre','10']),headers),['REO: 1169 · MES: Setembre–octubre · ANY: 2026']);
+assert.deepEqual(E.studyMetadata(months(['Novembre','Setembre']),headers),['REO: 1169 · MES: Setembre / Novembre · ANY: 2026']);
+assert.deepEqual(E.studyMetadata(months(['Setembre','']),headers),['REO: 1169 · MES: Setembre / no disponible · ANY: 2026']);
+assert.deepEqual(E.studyMetadata([{REO:'1169',MES:'Desembre',ANY:'2025'},{REO:'1169',MES:'Gener',ANY:'2026'}],headers),['Estudis / dates del fitxer carregat:','REO: 1169 · MES: Desembre · ANY: 2025','REO: 1169 · MES: Gener · ANY: 2026']);
+console.log('OK metadades: mesos agrupats per REO i any, ordre cronològic, duplicats, mesos discontinus i absències.');
