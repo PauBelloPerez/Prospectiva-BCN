@@ -1,0 +1,30 @@
+// Proves de l'estat de l'editor amb un DOM mínim simulat; no substitueixen una prova visual.
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),E=require('../engine.js');
+const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+const elements=Object.fromEntries(ids.map(id=>[id,{value:'',innerHTML:'',hidden:false,open:false,addEventListener(){},showModal(){this.open=true;},close(){this.open=false;}}]));
+const dynamic=['editLabel','editType','editMissing','editMin','editMax','editReverse','editConfirmed'];
+for(const id of dynamic)elements[id]={value:'',checked:false};
+const context=vm.createContext({CEO:E,structuredClone,console,alert:msg=>{throw Error(msg);},document:{getElementById:id=>{if(!elements[id])throw Error('Unexpected DOM id: '+id);return elements[id];},addEventListener(){},querySelectorAll(){return [];}}});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8'),context);
+vm.runInContext(`install({headers:['ESTUDIS_1_15','VAL_S_ILLA_0_10'],rows:[{ESTUDIS_1_15:'10',VAL_S_ILLA_0_10:'Molt deficient'},{ESTUDIS_1_15:'11',VAL_S_ILLA_0_10:'Etiqueta desconeguda'}]},'test.csv');defs.ESTUDIS_1_15.map={'10':{label:'Universitaris'},'11':{label:'Universitaris'}};optionCache.clear();editVariable('ESTUDIS_1_15');`,context);
+assert.ok(elements.variableForm.innerHTML.includes('Universitaris'));
+elements.resetVariable.onclick();
+assert.ok(elements.variableForm.innerHTML.includes('Valors predeterminats carregats'));
+assert.equal(vm.runInContext('Object.keys(variableDraft.map).length',context),0);
+assert.equal(vm.runInContext('defs.ESTUDIS_1_15.map["10"].label',context),'Universitaris');
+elements.variableDialog.close();
+vm.runInContext("editVariable('ESTUDIS_1_15');",context);
+assert.ok(elements.variableForm.innerHTML.includes('Universitaris')); // tancar cancel·la el restabliment
+elements.resetVariable.onclick();
+for(const [id,value] of Object.entries({editLabel:'Nivell d’estudis',editType:'category',editMissing:'98,99',editMin:'',editMax:'',editReverse:'no'}))elements[id].value=value;
+elements.editConfirmed.checked=true;
+elements.applyVariable.onclick();
+assert.equal(vm.runInContext('Object.keys(defs.ESTUDIS_1_15.map).length',context),0);
+assert.equal(vm.runInContext("opts('ESTUDIS_1_15').length",context),2);
+vm.runInContext("editVariable('VAL_S_ILLA_0_10');",context);
+assert.ok(elements.variableForm.innerHTML.includes('Etiqueta desconeguda (1 entrevistes)'));
+assert.ok(elements.variableForm.innerHTML.includes('unrecognized-row'));
+assert.ok(elements.variableForm.innerHTML.includes('value="0"'));
+console.log('OK editor: reinici en esborrany, cancel·lació, aplicació i diagnòstic. DOM simulat.');
