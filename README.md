@@ -182,10 +182,20 @@ Primera comprobación recomendada: carga tu CSV, aplica la plantilla y compara l
 
 ## Privacidad y persistencia
 
-Los microdatos se procesan en memoria en tu navegador. No hay llamadas de red, analítica, CDN ni subida de archivos en el código de la aplicación. Al recargar o cerrar la página se pierden los datos y la configuración no exportada. Guarda el JSON para conservar tu trabajo y vuelve a cargar el CSV cuando lo necesites.
+Los microdatos se procesan en memoria en tu navegador. El botón «Carrega CEO · REO1169» descarga el CSV publicado; requiere conexión. La carga manual y el análisis se realizan localmente. No hay analítica, CDN ni subida de microdatos desde la aplicación. Al recargar o cerrar la página se pierden los datos y la configuración no exportada. Guarda el JSON para conservar tu trabajo y vuelve a cargar el CSV cuando lo necesites.
 
 ## Nombre de las descargas (v1.7)
 
 El campo «Nom del fitxer», junto a los botones de exportación, permite elegir un nombre común para CSV, HTML, Word y el JSON de «Desa l’anàlisi». La extensión se añade automáticamente. El nombre se guarda con el análisis; las configuraciones anteriores usan `comparacio_ceo`. Se conservan acentos y espacios, se sustituyen los caracteres incompatibles con Windows y los nombres vacíos vuelven al predeterminado. El título visible de la tabla se configura por separado.
 
 En PDF se propone el nombre mediante el título de impresión; el navegador o el controlador de impresión puede elegir otro nombre, que se puede cambiar en el diálogo de guardado.
+
+## Carga del CEO publicado (v1.8)
+
+Sube `REO1169_microdades_anonimitzades.csv`, con ese nombre exacto, a la misma carpeta publicada que `index.html`. En GitHub Pages, el botón **Carrega CEO · REO1169** descarga el CSV de esa carpeta. Espera a que termine la publicación de GitHub Pages tras subirlo.
+
+Si abres `index.html` mediante doble clic (`file://`), el botón descarga la versión de la raíz de la rama `main` de `PauBelloPerez/Prospectiva-BCN` mediante raw.githubusercontent.com. Esa ruta debe ser accesible públicamente. Con un servidor local (por ejemplo Live Server), coloca el CSV junto a `index.html`.
+
+La carga usa los selectores de codificación y separador, igual que la carga manual. Una carga correcta inicia un nuevo análisis; un error de red o de lectura conserva el actual. Puedes seguir cargando cualquier otra oleada con «Carrega CSV». Para actualizar el acceso directo a otra oleada, cambia `PUBLISHED_CSV` en `app.js` y las etiquetas REO del botón en `index.html` y `app.js`.
+
+Se han probado descargas simuladas, errores, codificación y cargas simultáneas. El CSV real no se incluye en este ZIP y queda pendiente verificar su descarga cuando esté publicado.

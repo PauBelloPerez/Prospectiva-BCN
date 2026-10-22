@@ -3,6 +3,10 @@ const E=CEO,$=id=>document.getElementById(id),esc=E.escapeHTML;
 let studyLines=[],rows=[],headers=[],defs=Object.create(null),fileName='',isDemo=false,result=null,optionCache=new Map(),currentEdit=null,variableDraft=null,pendingConfig=null;
 const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',exportName:'comparacio_ceo',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
 let config=initial();
+// Canvia aquest nom quan publiquis una nova onada al repositori.
+const PUBLISHED_CSV='REO1169_microdades_anonimitzades.csv';
+const REPOSITORY_RAW='https://raw.githubusercontent.com/PauBelloPerez/Prospectiva-BCN/main/';
+let csvLoadId=0;
 function message(text,error=false){$('status').hidden=!text;$('status').className='notice'+(error?' error':'');$('status').textContent=text;}
 function fmt(v,dec=config.decimals){return v===null||v===undefined||!Number.isFinite(v)?'—':v.toLocaleString('ca-ES',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
 function opts(name){if(!optionCache.has(name))optionCache.set(name,E.options(rows,name,defs));return optionCache.get(name);}
@@ -137,8 +141,37 @@ function renderResults(){
 }
 function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();for(const id of ['saveConfig','presetBtn','matrixBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
 function firstFilter(){const variable=headers[0];return {variable,op:'in',values:[]};}
-function install(data,name,demo=false){rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
-$('csvFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;message('Llegint el CSV…');try{const b=await f.arrayBuffer();let enc=$('encoding').value;let text;if(enc==='auto'){try{text=new TextDecoder('utf-8',{fatal:true}).decode(b);}catch{text=new TextDecoder('windows-1252').decode(b);}}else text=new TextDecoder(enc,{fatal:true}).decode(b);install(E.parseCSV(text,$('delimiter').value),f.name);}catch(err){message('No s’ha pogut carregar: '+err.message,true);}finally{e.target.value='';}});
+function install(data,name,demo=false){csvLoadId++;rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
+function readCSVBuffer(buffer,encoding='auto',delimiter='auto'){
+ let text;
+ if(encoding==='auto'){try{text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{text=new TextDecoder('windows-1252').decode(buffer);}}
+ else text=new TextDecoder(encoding,{fatal:true}).decode(buffer);
+ if(/^\s*(?:<!doctype html|<html)/i.test(text))throw Error('El servidor ha retornat una pàgina HTML en lloc del CSV.');
+ if(text.startsWith('version https://git-lfs.github.com/spec/v1'))throw Error('El fitxer és un punter Git LFS. Publica el CSV complet.');
+ return E.parseCSV(text,delimiter);
+}
+$('csvFile').addEventListener('change',async e=>{
+ const f=e.target.files[0];if(!f)return;const loadId=++csvLoadId,encoding=$('encoding').value,delimiter=$('delimiter').value;
+ message('Llegint el CSV.');
+ try{const buffer=await f.arrayBuffer();if(loadId===csvLoadId)install(readCSVBuffer(buffer,encoding,delimiter),f.name);}
+ catch(err){if(loadId===csvLoadId)message('No s’ha pogut carregar: '+err.message,true);}
+ finally{e.target.value='';}
+});
+$('latestCeoBtn').onclick=async()=>{
+ const button=$('latestCeoBtn');if(button.disabled)return;
+ const loadId=++csvLoadId,encoding=$('encoding').value,delimiter=$('delimiter').value;
+ const url=location.protocol==='file:'?REPOSITORY_RAW+encodeURIComponent(PUBLISHED_CSV):new URL(PUBLISHED_CSV,document.baseURI).href;
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),45000);
+ button.disabled=true;button.textContent='Carregant el CEO…';message('Descarregant '+PUBLISHED_CSV+'…');
+ try{
+  const response=await fetch(url,{signal:controller.signal,cache:'no-cache',credentials:'omit'});
+  if(!response.ok)throw Error(response.status===404?'Encara no es troba el CSV publicat. Puja’l al costat d’index.html i espera que es publiquin els canvis.':'El servidor ha retornat un error HTTP '+response.status+'.');
+  const buffer=await response.arrayBuffer();if(loadId!==csvLoadId)return;
+  install(readCSVBuffer(buffer,encoding,delimiter),PUBLISHED_CSV);
+ }catch(err){if(loadId===csvLoadId)message('No s’ha pogut carregar el CEO. '+(err.name==='AbortError'?'La descàrrega ha superat el temps d’espera.':err.message)+' Pots tornar-ho a provar o utilitzar «Carrega CSV».',true);}
+ finally{clearTimeout(timeout);button.disabled=false;button.textContent='Carrega CEO · REO1169';}
+};
+
 function preset(){const a=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT'),b=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT2');if(!a||!b){message('Aquesta plantilla necessita INT_PARLAMENT_VOT i INT_PARLAMENT_VOT2. Pots construir els grups manualment.',true);return;}const partyKey=(v,p)=>opts(v).find(x=>E.norm(x.label)===E.norm(p))?.key;if(!partyKey(a,'PSC')||!partyKey(a,'ERC')||!partyKey(b,'PSC')||!partyKey(b,'ERC')){message('No s’han reconegut PSC i ERC en les dues variables. Revisa les etiquetes al diccionari i torna a aplicar la plantilla.',true);return;}
  config.groups=[['PSC → ERC','PSC','ERC'],['ERC → PSC','ERC','PSC']].map(([name,x,y])=>({name,mode:'all',filters:[{variable:a,op:'in',values:[partyKey(a,x)]},{variable:b,op:'in',values:[partyKey(b,y)]}]}));config.indicators=['IDEOL_0_10','ESP_CAT_0_10','EDAT_GR','ESTUDIS_1_15','LLOC_NAIX'].map(n=>headers.find(h=>h.toUpperCase()===n)).filter(Boolean).map(variable=>({variable,stat:'mean'}));config.title='Perfils PSC–ERC i ERC–PSC';message('Plantilla aplicada. Revisa l’orientació espanyolisme–catalanisme i configura els estudis si vols agrupar-los.');render();}
 $('presetBtn').onclick=preset;
