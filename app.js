@@ -38,10 +38,21 @@ function renderPicker(){const query=E.norm($('indicatorSearch').value),list=vari
 }
 function renderDictionary(){const query=E.norm($('dictionarySearch').value);let list=variables(true).filter(n=>E.norm(n+' '+defs[n].label).includes(query));$('dictionaryRows').innerHTML=list.slice(0,150).map(n=>{const d=defs[n];return `<div class="dict-row"><div><b>${esc(d.label)}</b><span class="code">${esc(n)}</span></div><div class="source">${esc(d.source||'Regla personalitzada')}</div><span class="pill ${!d.confirmed?'pending':''}">${!d.confirmed?'Revisa orientació':d.type==='number'?'Numèrica':d.type==='multi'?'Resposta múltiple':'Categòrica'}</span><button class="quiet" data-configure="${esc(n)}">Edita ↗</button></div>`;}).join('')+(list.length>150?'<p class="hint">Més de 150 resultats. Fes servir la cerca.</p>':'');}
 function filterText(f){const d=defs[f.variable];let label=d?.label||f.variable;if(['valid','missing'].includes(f.op))return `${label}: ${f.op==='valid'?'resposta vàlida':'sense resposta vàlida'}`;if(['gte','lte'].includes(f.op))return `${label} ${f.op==='gte'?'≥':'≤'} ${f.value}`;const o=d?opts(f.variable):[];return `${label} ${f.op==='not'?'≠':'='} ${(f.values||[]).map(v=>o.find(x=>x.key===v)?.label||v).join(' / ')||'(cap opció)'}`;}
-function tableData(){if(!result)return [];const diff=config.difference&&result.groups.length>=2;const out=[['Indicador',...result.groups.map(g=>`${g.name} (n=${g.n})`),...(diff?['Diferència: '+result.groups[0].name+' − '+result.groups[1].name]:[])]];
- for(const ind of result.indicators){if(ind.blocked){out.push([ind.label,...result.groups.map(()=>'Pendent de revisar l’orientació'),...(diff?['—']:[])]);continue;}const stats=ind.stats;out.push([ind.label,...stats.map(s=>`Base vàlida n=${s.valid}; absents=${s.missing}; pes invàlid=${s.invalidWeight}`),...(diff?['']:[])]);
-  if(ind.type==='number'){const vals=stats.map(s=>s[ind.stat]);out.push([ind.stat==='median'?'Mediana':'Mitjana',...vals.map(x=>fmt(x)),...(diff?[diffText(vals[0],vals[1],'punts')]:[])]);}
-  else for(const cat of ind.categories){const cs=stats.map(s=>s.counts.find(c=>c.key===cat.key)||{n:0,pct:s.base?0:null});out.push([cat.label,...cs.map(c=>`${fmt(c.pct)} % (${c.n})`),...(diff?[diffText(cs[0].pct,cs[1].pct,'pp')]:[])]);}
+function numericLabel(ind){return `${ind.label} (${ind.stat==='median'?'mediana':'mitjana'})`;}
+function numericValue(ind,stats){return `${fmt(stats[ind.stat])} (n = ${stats.valid})`;}
+function numericNotes(){
+ const numeric=(result?.indicators||[]).filter(ind=>ind.type==='number'&&!ind.blocked);
+ if(!numeric.length)return [];
+ return ['Variables numèriques: mitjana o mediana segons l’etiqueta. El n de cada cel·la és la base vàlida sense ponderar; exclou els pesos invàlids quan hi ha ponderació.',
+ ...numeric.filter(ind=>ind.stats.some(s=>s.missing||s.invalidWeight)).map(ind=>`${numericLabel(ind)} · ${ind.stats.map((s,i)=>`${result.groups[i].name}: absents = ${s.missing}${config.weight?'; pes invàlid = '+s.invalidWeight:''}`).join(' · ')}.`)];
+}
+function tableData(){if(!result)return [];const diff=config.difference&&result.groups.length>=2;const out=[['Indicador',...result.groups.map(g=>`${g.name} (n=${g.n})`),...(diff?['Diferència: '+result.groups[0].name+' - '+result.groups[1].name]:[])]];
+ for(const ind of result.indicators){
+  if(ind.blocked){out.push([ind.label,...result.groups.map(()=>'Pendent de revisar l’orientació'),...(diff?['-']:[])]);continue;}
+  const stats=ind.stats;
+  if(ind.type==='number'){const vals=stats.map(s=>s[ind.stat]);out.push([numericLabel(ind),...stats.map(s=>numericValue(ind,s)),...(diff?[diffText(vals[0],vals[1],'punts')]:[])]);continue;}
+  out.push([ind.label,...stats.map(s=>`Base vàlida n=${s.valid}; absents=${s.missing}; pes invàlid=${s.invalidWeight}`),...(diff?['']:[])]);
+  for(const cat of ind.categories){const cs=stats.map(s=>s.counts.find(c=>c.key===cat.key)||{n:0,pct:s.base?0:null});out.push([cat.label,...cs.map(c=>`${fmt(c.pct)} % (${c.n})`),...(diff?[diffText(cs[0].pct,cs[1].pct,'pp')]:[])]);}
  }
  return out;
 }
@@ -53,6 +64,7 @@ function notes(){if(!result)return [];return [
  ...config.groups.map(g=>`${g.name}: ${g.filters.length?g.filters.map(filterText).join(g.mode==='any'?' O ':' I '):'tota la mostra filtrada'}.`),
  `${config.weight?'Ponderació: '+config.weight+'. Mitjanes i percentatges ponderats; n sense ponderar. Pes absent, nul, negatiu o no numèric: exclòs del càlcul.':'Sense ponderació. n = nombre d’entrevistes.'} Percentatges sobre ${config.denominator==='valid'?'les respostes vàlides de cada indicador':'totes les persones del grup amb pes vàlid'}.`,
  `Les bases vàlides exclouen no resposta, exclusions configurades i valors numèrics no reconeguts. La base de les mitjanes sempre és la vàlida. Les diferències es calculen abans d’arrodonir; punts per a escales i punts percentuals (pp) per a proporcions.`,
+ ...numericNotes(),
  ...(result.overlap?[`Solapament entre els dos primers grups: ${result.overlap} entrevistes. La comparació és descriptiva; els grups no són independents.`]:[]),
  ...(result.indicators.some(x=>x.type==='multi')?['Resposta múltiple: cada persona compta un cop per categoria; la suma pot superar el 100%. La base vàlida inclou qui té almenys una resposta vàlida als camps seleccionats.']:[]),
  ...(config.indicators.some(x=>x.stat==='median')&&config.weight?['Mediana ponderada: primer valor amb pes acumulat igual o superior al 50%.']:[]),
@@ -71,10 +83,16 @@ function renderResults(){
  $('warnings').innerHTML=[...new Set(warn)].map(t=>`<p class="warning">${esc(t)}</p>`).join('')+(result?.indicators||[]).filter(x=>x.blocked||x.stats?.some(s=>s.unknown)).map(x=>`<button class="secondary" data-configure="${esc(x.name)}">Revisa la variable: ${esc(x.label)}</button>`).join(' ');
  if(!result||!config.indicators.length){$('tableContainer').innerHTML='<div class="empty"><span class="empty-symbol">▥</span><h3>'+(!rows.length?'Una taula, moltes preguntes.':'Què vols comparar?')+'</h3><p>'+(!rows.length?'Carrega els microdades o obre l’exemple per començar.':'Selecciona indicadors al panell esquerre.')+'</p></div>';$('tableNotes').innerHTML='';return;}
  const diff=config.difference&&result.groups.length>=2;const span=result.groups.length+1+(diff?1:0);let html=`<table class="result-table"><thead><tr><th>Indicador</th>${result.groups.map(g=>`<th>${esc(g.name)}<span>n = ${g.n}</span></th>`).join('')}${diff?'<th>Diferència<span>Primer − segon grup</span></th>':''}</tr></thead><tbody>`;
- for(const ind of result.indicators){html+=`<tr class="section-row"><td colspan="${span}">${esc(ind.label)}<small>${esc(ind.name)}${ind.type==='multi'?' · resposta múltiple':''}</small></td></tr>`;if(ind.blocked){html+=`<tr><td colspan="${span}">Pendent de confirmar l’orientació al diccionari.</td></tr>`;continue;}
+ for(const ind of result.indicators){
+  if(ind.type==='number'){
+   if(ind.blocked){html+=`<tr class="numeric-row"><td title="${esc(ind.name)}">${esc(ind.label)}</td><td colspan="${span-1}">Pendent de revisar l’orientació</td></tr>`;continue;}
+   const vals=ind.stats.map(s=>s[ind.stat]);
+   html+=`<tr class="numeric-row"><td title="${esc(ind.name)}">${esc(numericLabel(ind))}</td>${ind.stats.map(s=>`<td title="${esc(`Base vàlida: ${s.valid}; absents: ${s.missing}; pes invàlid: ${s.invalidWeight}`)}">${esc(numericValue(ind,s))}</td>`).join('')}${diff?diffHTML(vals[0],vals[1],'punts'):''}</tr>`;continue;
+  }
+  html+=`<tr class="section-row"><td colspan="${span}">${esc(ind.label)}<small>${esc(ind.name)}${ind.type==='multi'?' · resposta múltiple':''}</small></td></tr>`;if(ind.blocked){html+=`<tr><td colspan="${span}">Pendent de confirmar l’orientació al diccionari.</td></tr>`;continue;}
   html+=`<tr class="base-row"><td>Base vàlida · absents${config.weight?' · pes invàlid':''}</td>${ind.stats.map(s=>`<td>${s.valid} · ${s.missing}${config.weight?' · '+s.invalidWeight:''}</td>`).join('')}${diff?'<td></td>':''}</tr>`;
-  if(ind.type==='number'){const vals=ind.stats.map(s=>s[ind.stat]);html+=`<tr><td>${ind.stat==='median'?'Mediana':'Mitjana'}</td>${vals.map(v=>`<td>${fmt(v)}</td>`).join('')}${diff?diffHTML(vals[0],vals[1],'punts'):''}</tr>`;}
-  else {for(const c of ind.categories){const vals=ind.stats.map(s=>s.counts.find(x=>x.key===c.key)||{n:0,pct:s.base?0:null});html+=`<tr><td>${esc(c.label)}</td>${vals.map(v=>`<td>${fmt(v.pct)} % (${v.n})</td>`).join('')}${diff?diffHTML(vals[0].pct,vals[1].pct,'pp'):''}</tr>`;}}
+  for(const c of ind.categories){const vals=ind.stats.map(s=>s.counts.find(x=>x.key===c.key)||{n:0,pct:s.base?0:null});html+=`<tr><td>${esc(c.label)}</td>${vals.map(v=>`<td>${fmt(v.pct)} % (${v.n})</td>`).join('')}${diff?diffHTML(vals[0].pct,vals[1].pct,'pp'):''}</tr>`;}
+
  }
  $('tableContainer').innerHTML=html+'</tbody></table>';$('tableNotes').innerHTML=notes().map(t=>`<p>${esc(t)}</p>`).join('');
 }
@@ -162,17 +180,19 @@ function reportData(){
  const tables=sets.map(columns=>{
   const table={label:columns.filter(c=>c.index!=='difference').map(c=>result.groups[c.index].name).join(' · '),headers:['Indicador',...columns.map(c=>c.label)],rows:[]};
   for(const ind of result.indicators){
-   table.rows.push({kind:'section',cells:[ind.label+(ind.type==='multi'?' · resposta múltiple':'')]});
-   if(ind.blocked){table.rows.push({kind:'notice',cells:['Pendent de comprovar l’orientació de l’escala. No s’ha calculat cap resultat.']});continue;}
-   table.rows.push({kind:'base',cells:['Base vàlida · absents'+(config.weight?' · pes invàlid':''),...columns.map(c=>{if(c.index==='difference')return '';const v=ind.stats[c.index];return v.valid+' · '+v.missing+(config.weight?' · '+v.invalidWeight:'');})]});
+   if(ind.blocked){table.rows.push({kind:'notice',cells:[ind.label+': pendent de comprovar l’orientació de l’escala. No s’ha calculat cap resultat.']});continue;}
    if(ind.type==='number'){
     const values=ind.stats.map(v=>v[ind.stat]);
-    table.rows.push({kind:'data',cells:[ind.stat==='median'?'Mediana':'Mitjana',...columns.map(c=>c.index==='difference'?diffText(values[0],values[1],'punts'):fmt(values[c.index]))]});
-   }else for(const category of ind.categories){
+    table.rows.push({kind:'numeric',cells:[numericLabel(ind),...columns.map(c=>c.index==='difference'?diffText(values[0],values[1],'punts'):numericValue(ind,ind.stats[c.index]))]});continue;
+   }
+   table.rows.push({kind:'section',cells:[ind.label+(ind.type==='multi'?' · resposta múltiple':'')]});
+   table.rows.push({kind:'base',cells:['Base vàlida · absents'+(config.weight?' · pes invàlid':''),...columns.map(c=>{if(c.index==='difference')return '';const v=ind.stats[c.index];return v.valid+' · '+v.missing+(config.weight?' · '+v.invalidWeight:'');})]});
+   for(const category of ind.categories){
     const values=ind.stats.map(v=>v.counts.find(c=>c.key===category.key)||{n:0,pct:v.base?0:null});
     table.rows.push({kind:'data',cells:[category.label,...columns.map(c=>c.index==='difference'?diffText(values[0].pct,values[1].pct,'pp'):fmt(values[c.index].pct)+' % ('+values[c.index].n+')')]});
    }
   }
+
   return table;
  });
  return {title:config.title,orientation:page.orientation,studyLines:[...studyLines],tables,notes:notes()};

@@ -12,3 +12,5 @@
 input[type=checkbox],input[type=radio]{accent-color:var(--accent)}.result-table th{color:#A21D1D}
 
 .report-layout{display:flex;flex-wrap:wrap;align-items:end;gap:12px 20px;margin-bottom:18px}.report-layout .field{min-width:220px;margin-top:4px}.report-layout .hint{flex:1;min-width:200px;margin:0 0 6px}@media print{.report-layout{display:none}}
+
+.result-table .numeric-row td:first-child{font-weight:600;background:#FDECEC;color:#A21D1D}

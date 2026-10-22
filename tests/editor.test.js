@@ -31,7 +31,7 @@ console.log('OK editor: reinici en esborrany, cancel·lació, aplicació i diagn
 vm.runInContext("config.indicators=[{variable:'VAL_S_ILLA_0_10',stat:'mean'}];render();",context);
 assert.equal(elements.wordBtn.disabled,false);
 let report=vm.runInContext('reportData()',context);
-assert.equal(report.tables[0].rows.find(r=>r.kind==='data').cells[1],'0,0');
+assert.equal(report.tables[0].rows.find(r=>r.kind==='numeric').cells[1],'0,0 (n = 1)');
 assert.ok(vm.runInContext('exportHTML()',context).includes('size:A4 portrait'));
 vm.runInContext("config.groups=Array.from({length:6},(_,i)=>({name:'Grup '+i,mode:'all',filters:[]}));render();",context);
 report=vm.runInContext('reportData()',context);

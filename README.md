@@ -2,6 +2,16 @@
 
 Aplicación local para comparar perfiles de encuestas. Interfaz en catalán; HTML, CSS y JavaScript sin dependencias, servicios externos ni instalación.
 
+## Ajuste visual de la versión 1.5.2
+
+El nombre de cada indicador numérico se distingue con fondo rojo suave, texto rojo oscuro y negrita. Los valores se mantienen en la misma fila sobre blanco. El estilo se aplica en pantalla, Word y HTML/PDF. El CSV conserva su formato de texto.
+
+## Novedades de la versión 1.5.1
+
+Las variables numéricas ocupan una sola fila: nombre del indicador y estadístico (media o mediana) en la primera celda y resultados en las siguientes. Cada resultado conserva la base válida como `n = ...`. Los casos ausentes y los pesos inválidos se detallan en las notas cuando existen y, en pantalla, al situar el cursor sobre la celda. Las variables pendientes de confirmar la orientación muestran el aviso sin calcular resultados.
+
+Este formato se aplica en pantalla, CSV, copia, HTML, PDF y Word, con cualquier orientación. Las variables categóricas conservan sus filas de categorías y bases. Se han probado medias, medianas, ausentes, pesos inválidos, diferencias y tablas divididas con datos sintéticos. La revisión visual sigue pendiente.
+
 ## Novedades de la versión 1.5
 
 El selector **Format de l'informe**, junto a las exportaciones, permite elegir A4 automático, vertical u horizontal. En automático, hasta tres columnas de resultados se presentan en vertical; con más columnas se utiliza horizontal. Se cuenta la columna de diferencias cuando está activa.
