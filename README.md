@@ -2,6 +2,14 @@
 
 Aplicación local para comparar perfiles de encuestas. Interfaz en catalán; HTML, CSS y JavaScript sin dependencias, servicios externos ni instalación.
 
+## Novedades de la versión 1.6
+
+Debajo de la tabla, **Edita les notes** despliega un editor de título y texto, tipografía, tamaño (8–24 pt), color, negrita y cursiva. El formato se aplica al bloque completo de notas. El título es opcional. El texto predeterminado se actualiza con el análisis hasta que lo personalizas; el texto personalizado se mantiene al modificar los filtros.
+
+**Oculta les notes** elimina el bloque de la vista y de las exportaciones sin perder el texto; **Mostra les notes** lo recupera. Dejar el texto vacío también elimina el bloque, incluido su encabezado. **Restableix les notes predeterminades** recupera el texto automático y el formato inicial. Los cambios se guardan en el JSON del análisis, con compatibilidad para configuraciones antiguas.
+
+Word, HTML, PDF y la copia enriquecida reciben el formato. CSV y copia como texto conservan solo el contenido. La tipografía utiliza las fuentes instaladas en el equipo; si falta alguna, el programa que abre el informe puede sustituirla. Los avisos de cálculo de la aplicación siguen visibles aunque ocultes las notas.
+
 ## Ajuste visual de la versión 1.5.2
 
 El nombre de cada indicador numérico se distingue con fondo rojo suave, texto rojo oscuro y negrita. Los valores se mantienen en la misma fila sobre blanco. El estilo se aplica en pantalla, Word y HTML/PDF. El CSV conserva su formato de texto.
@@ -175,3 +183,9 @@ Primera comprobación recomendada: carga tu CSV, aplica la plantilla y compara l
 ## Privacidad y persistencia
 
 Los microdatos se procesan en memoria en tu navegador. No hay llamadas de red, analítica, CDN ni subida de archivos en el código de la aplicación. Al recargar o cerrar la página se pierden los datos y la configuración no exportada. Guarda el JSON para conservar tu trabajo y vuelve a cargar el CSV cuando lo necesites.
+
+## Nombre de las descargas (v1.7)
+
+El campo «Nom del fitxer», junto a los botones de exportación, permite elegir un nombre común para CSV, HTML, Word y el JSON de «Desa l’anàlisi». La extensión se añade automáticamente. El nombre se guarda con el análisis; las configuraciones anteriores usan `comparacio_ceo`. Se conservan acentos y espacios, se sustituyen los caracteres incompatibles con Windows y los nombres vacíos vuelven al predeterminado. El título visible de la tabla se configura por separado.
+
+En PDF se propone el nombre mediante el título de impresión; el navegador o el controlador de impresión puede elegir otro nombre, que se puede cambiar en el diálogo de guardado.

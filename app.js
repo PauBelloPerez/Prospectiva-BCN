@@ -1,7 +1,7 @@
 'use strict';
 const E=CEO,$=id=>document.getElementById(id),esc=E.escapeHTML;
 let studyLines=[],rows=[],headers=[],defs=Object.create(null),fileName='',isDemo=false,result=null,optionCache=new Map(),currentEdit=null,variableDraft=null,pendingConfig=null;
-const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
+const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',exportName:'comparacio_ceo',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
 let config=initial();
 function message(text,error=false){$('status').hidden=!text;$('status').className='notice'+(error?' error':'');$('status').textContent=text;}
 function fmt(v,dec=config.decimals){return v===null||v===undefined||!Number.isFinite(v)?'—':v.toLocaleString('ca-ES',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
@@ -31,7 +31,7 @@ function renderGroups(){
  $('globalFilters').innerHTML=config.globalFilters.map((f,i)=>filterHTML(f,i,'global')).join('');
  $('groups').innerHTML=config.groups.map((g,i)=>`<div class="group"><div class="group-head"><input data-group-name="${i}" value="${esc(g.name)}" aria-label="Nom del grup"><span class="badge">n = ${result?result.groups[i].n:'—'}</span><button class="quiet" data-delete-group="${i}" title="Elimina el grup">×</button></div><label class="group-mode">Compleix <select data-group-mode="${i}"><option value="all" ${g.mode==='all'?'selected':''}>totes les condicions</option><option value="any" ${g.mode==='any'?'selected':''}>alguna condició</option></select></label>${g.filters.map((f,j)=>filterHTML(f,j,i)).join('')}${!g.filters.length?'<p class="hint">Tota la mostra filtrada.</p>':''}<button class="add" data-add-filter="${i}">＋ Condició</button></div>`).join('');
  $('weight').innerHTML='<option value="">Sense ponderació</option>'+headers.map(n=>`<option value="${esc(n)}" ${config.weight===n?'selected':''}>${esc(n)}</option>`).join('');
- $('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;$('reportOrientation').value=config.reportOrientation||'auto';
+ $('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;$('exportName').value=config.exportName??'comparacio_ceo';$('reportOrientation').value=config.reportOrientation||'auto';
 }
 function renderPicker(){const query=E.norm($('indicatorSearch').value),list=variables(true).filter(n=>E.norm(n+' '+defs[n].label).includes(query));$('indicatorPicker').innerHTML=list.slice(0,100).map(n=>`<button class="pick ${config.indicators.some(i=>i.variable===n)?'selected':''}" data-pick="${esc(n)}">${config.indicators.some(i=>i.variable===n)?'✓ ':'＋ '}${esc(defs[n].label)}<span class="code">${esc(n)}</span></button>`).join('')+(list.length>100?'<p class="hint">Més de 100 variables. Afina la cerca.</p>':'');
  $('selectedCount').textContent=config.indicators.length;$('selectedIndicators').innerHTML=config.indicators.map((s,i)=>`<div class="selected-item"><div><span>${esc(defs[s.variable]?.label||s.variable)}</span><span><button class="quiet" data-up="${i}" title="Mou amunt">↑</button><button class="quiet" data-configure="${esc(s.variable)}" title="Configura">⚙</button><button class="quiet" data-remove-indicator="${i}" title="Elimina">×</button></span></div>${defs[s.variable]?.type==='number'?`<select data-stat="${i}" aria-label="Estadístic"><option value="mean" ${s.stat==='mean'?'selected':''}>Mitjana</option><option value="median" ${s.stat==='median'?'selected':''}>Mediana</option></select>`:'<span class="hint">Percentatge (n)</span>'}</div>`).join('');
@@ -58,7 +58,7 @@ function tableData(){if(!result)return [];const diff=config.difference&&result.g
 }
 function diffText(a,b,unit){if(a===null||b===null||a===undefined||b===undefined)return '—';const v=a-b;return (v>0?'+':'')+fmt(v)+' '+unit;}
 function diffHTML(a,b,unit){let v=a===null||b===null?null:a-b;return `<td class="${v>0?'diff-pos':v<0?'diff-neg':''}">${esc(diffText(a,b,unit))}</td>`;}
-function notes(){if(!result)return [];return [
+function defaultNotes(){if(!result)return [];return [
  `Font: ${fileName}${isDemo?' · DADES SINTÈTIQUES, NO SÓN RESULTATS DEL CEO':''}. Mostra carregada: ${rows.length}; mostra filtrada: ${result.filtered}.`,
  `Filtres generals: ${config.globalFilters.length?config.globalFilters.map(filterText).join(' I '):'cap'}.`,
  ...config.groups.map(g=>`${g.name}: ${g.filters.length?g.filters.map(filterText).join(g.mode==='any'?' O ':' I '):'tota la mostra filtrada'}.`),
@@ -72,7 +72,46 @@ function notes(){if(!result)return [];return [
  ...config.indicators.filter(x=>defs[x.variable]?.type==='number'&&defs[x.variable].reverse).map(x=>`${defs[x.variable].label}: inversió manual de tota l’escala aplicada (${defs[x.variable].min} + ${defs[x.variable].max} − valor).`),
  'Anàlisi descriptiva. No s’han calculat intervals de confiança ni tests de significació.'
  ];}
+function noteSettings(){
+ const saved=config.reportNotes||{};
+ return {custom:saved.custom===true,visible:saved.visible!==false,text:typeof saved.text==='string'?saved.text:'',title:typeof saved.title==='string'?saved.title:'Notes de l’anàlisi',style:CEOReport.noteStyle(saved.style)};
+}
+function notes(){
+ const settings=noteSettings();if(!settings.visible)return [];
+ if(!settings.custom)return defaultNotes();
+ return settings.text.trim()?settings.text.split(/\r\n?|\n/):[];
+}
+function notesText(){const lines=notes();if(!lines.length)return [];const title=noteSettings().title;return title?[title,...lines]:lines;}
+function renderNotesPreview(){
+ const settings=noteSettings(),available=!!result&&!!config.indicators.length;
+ $('notesEditor').hidden=!available;
+ $('tableNotes').innerHTML=available?CEOReport.notesHTML({notes:notes(),notesTitle:settings.title,notesStyle:settings.style}):'';
+ $('notesState').textContent=!settings.visible?'Ocultes':settings.custom?'Personalitzades':'Predeterminades';
+ $('toggleNotes').textContent=settings.visible?'Oculta les notes':'Mostra les notes';
+ $('notesHint').textContent=settings.custom?'El text personalitzat es conserva quan canvies els filtres. Revisa’l abans d’exportar.':'El text predeterminat s’actualitza amb les dades i els filtres de la taula.';
+}
+function renderNotesEditor(){
+ const settings=noteSettings();
+ $('notesText').value=settings.custom?settings.text:defaultNotes().join('\n');
+ $('notesTitle').value=settings.title;
+ $('notesFont').value=settings.style.font;$('notesSize').value=String(settings.style.size);$('notesColor').value=settings.style.color;
+ $('notesBold').checked=settings.style.bold;$('notesItalic').checked=settings.style.italic;
+ renderNotesPreview();
+}
+function changeNotes(patch){config.reportNotes={...noteSettings(),...patch};renderNotesPreview();}
+$('notesText').oninput=()=>changeNotes({custom:true,text:$('notesText').value});
+$('notesTitle').oninput=()=>changeNotes({title:$('notesTitle').value});
+for(const [id,key] of [['notesFont','font'],['notesSize','size'],['notesColor','color'],['notesBold','bold'],['notesItalic','italic']]){
+ $(id).onchange=()=>{
+  const value=['bold','italic'].includes(key)?$(id).checked:$(id).value;
+  changeNotes({style:CEOReport.noteStyle({...noteSettings().style,[key]:value})});renderNotesEditor();
+ };
+}
+$('toggleNotes').onclick=()=>{changeNotes({visible:!noteSettings().visible});};
+$('resetNotes').onclick=()=>{delete config.reportNotes;renderNotesEditor();};
+
 function renderResults(){
+ renderNotesEditor();
  const page=CEOReport.layout(config.reportOrientation||'auto',config.groups.length+(config.difference&&config.groups.length>=2?1:0));
  $('reportLayoutHint').textContent=`Word, PDF i HTML: A4 ${page.orientation==='landscape'?'horitzontal':'vertical'}, lletra de taula ${page.fontSize} pt. Fins a ${page.maxDataColumns} columnes de resultats per taula.`;
  $('studyMetadata').innerHTML=studyLines.map(line=>`<p>${esc(line)}</p>`).join('');
@@ -94,11 +133,11 @@ function renderResults(){
   for(const c of ind.categories){const vals=ind.stats.map(s=>s.counts.find(x=>x.key===c.key)||{n:0,pct:s.base?0:null});html+=`<tr><td>${esc(c.label)}</td>${vals.map(v=>`<td>${fmt(v.pct)} % (${v.n})</td>`).join('')}${diff?diffHTML(vals[0].pct,vals[1].pct,'pp'):''}</tr>`;}
 
  }
- $('tableContainer').innerHTML=html+'</tbody></table>';$('tableNotes').innerHTML=notes().map(t=>`<p>${esc(t)}</p>`).join('');
+ $('tableContainer').innerHTML=html+'</tbody></table>';renderNotesPreview();
 }
 function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();for(const id of ['saveConfig','presetBtn','matrixBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
 function firstFilter(){const variable=headers[0];return {variable,op:'in',values:[]};}
-function install(data,name,demo=false){rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
+function install(data,name,demo=false){rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
 $('csvFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;message('Llegint el CSV…');try{const b=await f.arrayBuffer();let enc=$('encoding').value;let text;if(enc==='auto'){try{text=new TextDecoder('utf-8',{fatal:true}).decode(b);}catch{text=new TextDecoder('windows-1252').decode(b);}}else text=new TextDecoder(enc,{fatal:true}).decode(b);install(E.parseCSV(text,$('delimiter').value),f.name);}catch(err){message('No s’ha pogut carregar: '+err.message,true);}finally{e.target.value='';}});
 function preset(){const a=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT'),b=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT2');if(!a||!b){message('Aquesta plantilla necessita INT_PARLAMENT_VOT i INT_PARLAMENT_VOT2. Pots construir els grups manualment.',true);return;}const partyKey=(v,p)=>opts(v).find(x=>E.norm(x.label)===E.norm(p))?.key;if(!partyKey(a,'PSC')||!partyKey(a,'ERC')||!partyKey(b,'PSC')||!partyKey(b,'ERC')){message('No s’han reconegut PSC i ERC en les dues variables. Revisa les etiquetes al diccionari i torna a aplicar la plantilla.',true);return;}
  config.groups=[['PSC → ERC','PSC','ERC'],['ERC → PSC','ERC','PSC']].map(([name,x,y])=>({name,mode:'all',filters:[{variable:a,op:'in',values:[partyKey(a,x)]},{variable:b,op:'in',values:[partyKey(b,y)]}]}));config.indicators=['IDEOL_0_10','ESP_CAT_0_10','EDAT_GR','ESTUDIS_1_15','LLOC_NAIX'].map(n=>headers.find(h=>h.toUpperCase()===n)).filter(Boolean).map(variable=>({variable,stat:'mean'}));config.title='Perfils PSC–ERC i ERC–PSC';message('Plantilla aplicada. Revisa l’orientació espanyolisme–catalanisme i configura els estudis si vols agrupar-los.');render();}
@@ -171,6 +210,15 @@ $('applyVariable').onclick=()=>{try{if(currentEdit==='__multi_new__'||defs[curre
 function showMulti(name='__multi_new__'){currentEdit=name;$('resetVariable').hidden=true;const d=defs[name]||{label:'Problemes mencionats',sources:[]};$('variableHeading').textContent='Agrupa camps de resposta múltiple';$('variableForm').innerHTML=`<label class="field">Nom de l’indicador<input id="multiLabel" value="${esc(d.label)}"></label><p class="hint">Selecciona columnes de mencions de la mateixa pregunta (p. ex. PROBLEMES_1, PROBLEMES_2…). No seleccionis preguntes independents ni columnes binàries. Les categories han de tenir les mateixes etiquetes als camps.</p><select id="multiSources" multiple style="height:260px">${headers.filter(n=>defs[n].type==='category').map(n=>`<option value="${esc(n)}" ${d.sources.includes(n)?'selected':''}>${esc(n)}</option>`).join('')}</select><p class="hint">Ctrl / Cmd per seleccionar. Les repeticions d’una categoria dins d’una entrevista compten una sola vegada.</p>`;if(!$('variableDialog').open)$('variableDialog').showModal();}
 function applyMulti(){const sources=[...$('multiSources').selectedOptions].map(x=>x.value);if(sources.length<2)throw Error('Selecciona almenys dos camps.');const name=currentEdit==='__multi_new__'?'MULTI_'+Date.now():currentEdit;defs[name]={...E.definition(name),type:'multi',label:$('multiLabel').value||'Resposta múltiple',sources,source:'Combinació de mencions · configuració manual'};optionCache.clear();if(!config.indicators.some(x=>x.variable===name))config.indicators.push({variable:name,stat:'mean'});$('variableDialog').close();render();}
 $('multiBtn').onclick=()=>showMulti();
+function exportBaseName(){
+ let name=(typeof config.exportName==='string'?config.exportName:'').normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g,'_').trim().replace(/[. ]+$/g,'').replace(/(?:\.(?:csv|html?|docx|pdf|json))+$/i,'').replace(/[. ]+$/g,'');
+ name=Array.from(name).slice(0,120).join('').replace(/[. ]+$/g,'');
+ if(!name)return 'comparacio_ceo';
+ if(/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name))name='_'+name;
+ return name;
+}
+$('exportName').oninput=()=>{config.exportName=$('exportName').value;};
+$('exportName').onchange=()=>{config.exportName=exportBaseName();$('exportName').value=config.exportName;};
 function download(content,name,type){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
 function reportData(){
  if(!result||!config.indicators.length)throw Error('Selecciona indicadors abans d’exportar.');
@@ -195,24 +243,25 @@ function reportData(){
 
   return table;
  });
- return {title:config.title,orientation:page.orientation,studyLines:[...studyLines],tables,notes:notes()};
+ return {title:config.title,fileTitle:exportBaseName(),orientation:page.orientation,studyLines:[...studyLines],tables,notes:notes(),notesTitle:noteSettings().title,notesStyle:noteSettings().style};
 }
 function exportHTML(){return CEOReport.html(reportData());}
 function printReport(){
  const markup=exportHTML();
- const previous=document.getElementById('reportPrintFrame');if(previous)previous.remove();
+ const previous=document.getElementById('reportPrintFrame');if(previous){if(previous.cleanup)previous.cleanup();else previous.remove();}
  const frame=document.createElement('iframe');frame.id='reportPrintFrame';frame.title='Informe per imprimir';
  frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';
- document.body.append(frame);let printed=false;
- frame.onload=()=>{if(printed)return;printed=true;try{frame.contentWindow.onafterprint=()=>frame.remove();frame.contentWindow.focus();frame.contentWindow.print();}catch(e){frame.remove();message('No s’ha pogut obrir la impressió. Exporta HTML i imprimeix-lo des del navegador.',true);}};
+ document.body.append(frame);let printed=false;const originalTitle=document.title;
+ frame.cleanup=()=>{document.title=originalTitle;frame.remove();};
+ frame.onload=()=>{if(printed)return;printed=true;try{frame.contentWindow.onafterprint=frame.cleanup;document.title=exportBaseName();frame.contentWindow.focus();frame.contentWindow.print();}catch(e){frame.cleanup();message('No s’ha pogut obrir la impressió. Exporta HTML i imprimeix-lo des del navegador.',true);}};
  const doc=frame.contentDocument;doc.open();doc.write(markup);doc.close();
 }
-$('exportBtn').onclick=()=>{const data=[[config.title],...studyLines.map(line=>[line]),...tableData(),[],...notes().map(t=>[t])];download('\uFEFF'+data.map(r=>r.map(E.csvCell).join(';')).join('\r\n'),'comparacio_ceo.csv','text/csv;charset=utf-8');};
-$('htmlBtn').onclick=()=>download(exportHTML(),'comparacio_ceo.html','text/html;charset=utf-8');$('printBtn').onclick=()=>{try{printReport();}catch(e){message(e.message,true);}};
-$('wordBtn').onclick=()=>{try{download(CEOReport.docx(reportData()),'comparacio_ceo.docx',CEOReport.mime);}catch(e){message('No s’ha pogut exportar Word: '+e.message,true);}};
-$('copyBtn').onclick=async()=>{const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notes()].join('\n');try{if(navigator.clipboard&&typeof ClipboardItem!=='undefined'){await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([exportHTML()],{type:'text/html'})})]);}else throw Error();message('Taula copiada. Enganxa-la al document.');}catch{const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();message(ok?'Taula copiada com a text amb tabuladors.':'No s’ha pogut copiar. Utilitza l’exportació HTML o CSV.',!ok);}};
-$('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName},null,2),'analisi_ceo.json','application/json');
-function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
+$('exportBtn').onclick=()=>{const data=[[config.title],...studyLines.map(line=>[line]),...tableData(),[],...notesText().map(t=>[t])];download('\uFEFF'+data.map(r=>r.map(E.csvCell).join(';')).join('\r\n'),exportBaseName()+'.csv','text/csv;charset=utf-8');};
+$('htmlBtn').onclick=()=>download(exportHTML(),exportBaseName()+'.html','text/html;charset=utf-8');$('printBtn').onclick=()=>{try{printReport();}catch(e){message(e.message,true);}};
+$('wordBtn').onclick=()=>{try{download(CEOReport.docx(reportData()),exportBaseName()+'.docx',CEOReport.mime);}catch(e){message('No s’ha pogut exportar Word: '+e.message,true);}};
+$('copyBtn').onclick=async()=>{const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notesText()].join('\n');try{if(navigator.clipboard&&typeof ClipboardItem!=='undefined'){await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([exportHTML()],{type:'text/html'})})]);}else throw Error();message('Taula copiada. Enganxa-la al document.');}catch{const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();message(ok?'Taula copiada com a text amb tabuladors.':'No s’ha pogut copiar. Utilitza l’exportació HTML o CSV.',!ok);}};
+$('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName},null,2),exportBaseName()+'.json','application/json');
+function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.exportName!==undefined&&typeof c.exportName!=='string')throw Error('Nom del fitxer no vàlid.');if(c.reportNotes!==undefined){const n=c.reportNotes;if(!n||typeof n!=='object'||Array.isArray(n)||['custom','visible'].some(k=>n[k]!==undefined&&typeof n[k]!=='boolean')||['text','title'].some(k=>n[k]!==undefined&&typeof n[k]!=='string'))throw Error('Notes de l’informe no vàlides.');}if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
 function usedColumns(s){const used=new Set([...s.config.globalFilters.map(f=>f.variable),...s.config.groups.flatMap(g=>g.filters.map(f=>f.variable)),...s.config.indicators.map(i=>i.variable),...(s.config.weight?[s.config.weight]:[])]);for(const n of [...used])if(s.definitions[n]?.type==='multi'){used.delete(n);for(const src of s.definitions[n].sources)used.add(src);}return [...used];}
 $('configFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(!rows.length)throw Error('Carrega primer el CSV de la nova onada.');const saved=JSON.parse(await f.text());validateSaved(saved);const missing=usedColumns(saved).filter(n=>!headers.includes(n));if(missing.length){pendingConfig=saved;$('mappingFields').innerHTML=missing.map((n,i)=>`<label class="field">${esc(n)}<select data-map-column="${i}" data-old="${esc(n)}"><option value="">Elimina’n els usos</option>${varOptions()}</select></label>`).join('');$('mappingDialog').showModal();}else applySaved(saved,{});}catch(err){message(err.message,true);}finally{e.target.value='';}};
 $('cancelMapping').onclick=()=>{$('mappingDialog').close();pendingConfig=null;};$('applyMapping').onclick=()=>{try{const map=Object.fromEntries([...document.querySelectorAll('[data-map-column]')].map(s=>[s.dataset.old,s.value]));applySaved(pendingConfig,map);$('mappingDialog').close();pendingConfig=null;}catch(e){alert(e.message);}};
