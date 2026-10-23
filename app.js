@@ -114,6 +114,53 @@ for(const [id,key] of [['notesFont','font'],['notesSize','size'],['notesColor','
 $('toggleNotes').onclick=()=>{changeNotes({visible:!noteSettings().visible});};
 $('resetNotes').onclick=()=>{delete config.reportNotes;renderNotesEditor();};
 
+function orderItemsHTML(items,kind){
+ if(!items.length)return '<p class="hint">No hi ha files per ordenar amb els filtres actuals.</p>';
+ return '<ol class="order-list">'+items.map((item,i)=>{
+  const label=item.label??item.name;
+  return `<li><span class="order-item-label">${esc(label)}</span><div class="order-controls"><label class="order-position">Posició<input type="number" min="1" max="${items.length}" step="1" value="${i+1}" data-order-kind="${kind}" data-order-index="${i}" aria-label="Posició de ${esc(label)}"></label><button class="quiet" data-order-kind="${kind}" data-order-index="${i}" data-order-step="-1" ${i===0?'disabled':''} title="${kind==='groups'?'Mou a l’esquerra':'Mou amunt'}: ${esc(label)}" aria-label="${kind==='groups'?'Mou a l’esquerra':'Mou amunt'}: ${esc(label)}">${kind==='groups'?'←':'↑'}</button><button class="quiet" data-order-kind="${kind}" data-order-index="${i}" data-order-step="1" ${i===items.length-1?'disabled':''} title="${kind==='groups'?'Mou a la dreta':'Mou avall'}: ${esc(label)}" aria-label="${kind==='groups'?'Mou a la dreta':'Mou avall'}: ${esc(label)}">${kind==='groups'?'→':'↓'}</button></div></li>`;
+ }).join('')+'</ol>';
+}
+function rowOrderSelection(){return config.indicators.find(s=>'category:'+s.variable===$('orderRowsVariable').value);}
+function renderOrderEditor(){
+ $('orderEditor').hidden=!result||!config.indicators.length;
+ if($('orderEditor').hidden)return;
+ const choices=(result.indicators||[]).filter(ind=>ind.type!=='number'&&!ind.blocked);
+ const selected=$('orderRowsVariable').value;
+ $('orderRowsVariable').innerHTML='<option value="@indicators">Indicadors (blocs de files)</option>'+choices.map(ind=>`<option value="category:${esc(ind.name)}">Respostes: ${esc(ind.label)}</option>`).join('');
+ $('orderRowsVariable').value=selected==='@indicators'||choices.some(ind=>'category:'+ind.name===selected)?selected:choices.length?'category:'+choices[0].name:'@indicators';
+ $('orderColumns').innerHTML=orderItemsHTML(config.groups,'groups');
+ const sel=rowOrderSelection(),ind=sel?result.indicators.find(ind=>ind.name===sel.variable):null;
+ $('orderRows').innerHTML=orderItemsHTML(ind?ind.categories:config.indicators.map(s=>({label:defs[s.variable].label})) ,ind?'categories':'indicators');
+ $('resetRowOrder').hidden=!sel;
+ $('resetRowOrder').disabled=!sel?.categoryOrder?.length;
+ $('orderDifferenceHint').textContent=config.difference&&config.groups.length>=2?`La diferència sempre compara els dos primers grups: ${config.groups[0].name} − ${config.groups[1].name}. Canviar-los de posició canvia aquesta comparació.`:'Les columnes es mostren d’esquerra a dreta. Els filtres de cada grup es mouen amb la seva columna.';
+}
+function moveTableOrder(kind,from,to){
+ if(!result)return;
+ let list,sel;
+ if(kind==='groups')list=config.groups;
+ else if(kind==='indicators')list=config.indicators;
+ else if(kind==='categories'){
+  sel=rowOrderSelection();if(!sel)return;
+  list=[...(result.indicators.find(ind=>ind.name===sel.variable)?.categories||[])];
+ }else return;
+ if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to<0||from>=list.length||to>=list.length){renderOrderEditor();$('orderStatus').textContent=`Tria una posició entre 1 i ${list.length}.`;return;}
+ if(from===to)return;
+ const item=list.splice(from,1)[0];list.splice(to,0,item);
+ if(sel){
+  // Preserve the positions of categories hidden by global filters, as well as their saved keys.
+  const all=E.orderedCategories(E.options(rows,sel.variable,defs),sel.categoryOrder),visible=new Set(list.map(c=>c.key));
+  let next=0;const keys=all.map(c=>visible.has(c.key)?list[next++].key:c.key);
+  sel.categoryOrder=[...keys,...(sel.categoryOrder||[]).filter(key=>!keys.includes(key))];
+ }
+ render();
+ $('orderStatus').textContent=`${item.label??item.name??defs[item.variable]?.label}: posició ${to+1}.`;
+ document.querySelector?.(`[data-order-kind="${kind}"][data-order-index="${to}"]`)?.focus?.();
+}
+$('orderRowsVariable').onchange=()=>{renderOrderEditor();$('orderStatus').textContent='';};
+$('resetRowOrder').onclick=()=>{const sel=rowOrderSelection();if(sel){delete sel.categoryOrder;render();$('orderStatus').textContent='Ordre predeterminat de les respostes restaurat.';}};
+
 function renderResults(){
  renderNotesEditor();
  const page=CEOReport.layout(config.reportOrientation||'auto',config.groups.length+(config.difference&&config.groups.length>=2?1:0));
@@ -139,9 +186,9 @@ function renderResults(){
  }
  $('tableContainer').innerHTML=html+'</tbody></table>';renderNotesPreview();
 }
-function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();for(const id of ['saveConfig','presetBtn','matrixBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
+function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();renderOrderEditor();for(const id of ['saveConfig','presetBtn','matrixBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
 function firstFilter(){const variable=headers[0];return {variable,op:'in',values:[]};}
-function install(data,name,demo=false){csvLoadId++;rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
+function install(data,name,demo=false){csvLoadId++;rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('orderEditor').open=false;$('orderRowsVariable').value='';$('orderStatus').textContent='';$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
 function readCSVBuffer(buffer,encoding='auto',delimiter='auto'){
  let text;
  if(encoding==='auto'){try{text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{text=new TextDecoder('windows-1252').decode(buffer);}}
@@ -157,19 +204,39 @@ $('csvFile').addEventListener('change',async e=>{
  catch(err){if(loadId===csvLoadId)message('No s’ha pogut carregar: '+err.message,true);}
  finally{e.target.value='';}
 });
-$('latestCeoBtn').onclick=async()=>{
- const button=$('latestCeoBtn');if(button.disabled)return;
- const loadId=++csvLoadId,encoding=$('encoding').value,delimiter=$('delimiter').value;
- const url=location.protocol==='file:'?REPOSITORY_RAW+encodeURIComponent(PUBLISHED_CSV):new URL(PUBLISHED_CSV,document.baseURI).href;
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),45000);
- button.disabled=true;button.textContent='Carregant el CEO…';message('Descarregant '+PUBLISHED_CSV+'…');
+function publishedCSVLocations(){
+ const sources=[{label:'GitHub',url:REPOSITORY_RAW+encodeURIComponent(PUBLISHED_CSV)}];
+ if(location.protocol!=='file:'){
+  const local=new URL(PUBLISHED_CSV,document.baseURI).href;
+  if(local!==sources[0].url)sources.push({label:'Web',url:local});
+ }
+ return sources;
+}
+async function fetchPublishedCSV(url){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  try{
   const response=await fetch(url,{signal:controller.signal,cache:'no-cache',credentials:'omit'});
-  if(!response.ok)throw Error(response.status===404?'Encara no es troba el CSV publicat. Puja’l al costat d’index.html i espera que es publiquin els canvis.':'El servidor ha retornat un error HTTP '+response.status+'.');
-  const buffer=await response.arrayBuffer();if(loadId!==csvLoadId)return;
-  install(readCSVBuffer(buffer,encoding,delimiter),PUBLISHED_CSV);
- }catch(err){if(loadId===csvLoadId)message('No s’ha pogut carregar el CEO. '+(err.name==='AbortError'?'La descàrrega ha superat el temps d’espera.':err.message)+' Pots tornar-ho a provar o utilitzar «Carrega CSV».',true);}
- finally{clearTimeout(timeout);button.disabled=false;button.textContent='Carrega CEO · REO1169';}
+  if(!response.ok)throw Error('HTTP '+response.status+(response.status===404?' · fitxer no trobat':''));
+  // El CSV publicat sempre es detecta automàticament, independentment dels selectors manuals.
+  return readCSVBuffer(await response.arrayBuffer());
+ }finally{clearTimeout(timeout);}
+}
+$('latestCeoBtn').onclick=async()=>{
+ const button=$('latestCeoBtn');if(button.disabled)return;
+ const loadId=++csvLoadId,errors=[];
+ button.disabled=true;button.textContent='Carregant el CEO…';
+ try{
+  for(const source of publishedCSVLocations()){
+   if(loadId!==csvLoadId)return;
+   message('Descarregant '+PUBLISHED_CSV+' des de '+source.label+'…');
+   let data;
+   try{data=await fetchPublishedCSV(source.url);}
+   catch(err){errors.push(source.label+': '+(err.name==='AbortError'?'temps d’espera esgotat':err.message));continue;}
+   if(loadId!==csvLoadId)return;
+   install(data,PUBLISHED_CSV);return;
+  }
+  if(loadId===csvLoadId)message('No s’ha pogut carregar el CEO. '+errors.join(' | ')+'. Comprova que el CSV sigui públic a main. Pots tornar-ho a provar o utilitzar «Carrega CSV».',true);
+ }finally{button.disabled=false;button.textContent='Carrega CEO · REO1169';}
 };
 
 function preset(){const a=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT'),b=headers.find(x=>x.toUpperCase()==='INT_PARLAMENT_VOT2');if(!a||!b){message('Aquesta plantilla necessita INT_PARLAMENT_VOT i INT_PARLAMENT_VOT2. Pots construir els grups manualment.',true);return;}const partyKey=(v,p)=>opts(v).find(x=>E.norm(x.label)===E.norm(p))?.key;if(!partyKey(a,'PSC')||!partyKey(a,'ERC')||!partyKey(b,'PSC')||!partyKey(b,'ERC')){message('No s’han reconegut PSC i ERC en les dues variables. Revisa les etiquetes al diccionari i torna a aplicar la plantilla.',true);return;}
@@ -215,6 +282,7 @@ $('matrixApply').onclick=()=>{
 
 $('addGlobal').onclick=()=>{config.globalFilters.push(firstFilter());render();};$('addGroup').onclick=()=>{if(config.groups.length>=50){message('Es permeten fins a 50 grups.',true);return;}config.groups.push({name:'Grup '+(config.groups.length+1),mode:'all',filters:[]});render();};
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const ds=b.dataset;
+ if(ds.orderKind&&ds.orderStep!==undefined){if(!b.disabled)moveTableOrder(ds.orderKind,Number(ds.orderIndex),Number(ds.orderIndex)+Number(ds.orderStep));return;}
  if(ds.tab){document.querySelectorAll('.tab-panel').forEach(x=>x.hidden=x.id!==ds.tab);document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===ds.tab));}
  if(ds.pick){let i=config.indicators.findIndex(x=>x.variable===ds.pick);if(i>=0)config.indicators.splice(i,1);else config.indicators.push({variable:ds.pick,stat:'mean'});render();}
  if(ds.addFilter!==undefined){config.groups[Number(ds.addFilter)].filters.push(firstFilter());render();}
@@ -225,6 +293,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
  if(ds.configure)editVariable(ds.configure);
 });
 document.addEventListener('change',e=>{const ds=e.target.dataset;
+ if(ds.orderKind){moveTableOrder(ds.orderKind,Number(ds.orderIndex),Number(e.target.value)-1);return;}
  if(ds.filter){const p=e.target.closest('.filter');const list=p.dataset.scope==='global'?config.globalFilters:config.groups[Number(p.dataset.scope)].filters;const f=list[Number(p.dataset.index)];if(ds.filter==='variable'){f.variable=e.target.value;f.op='in';f.values=[];}else if(ds.filter==='values')f.values=[...e.target.selectedOptions].map(x=>x.value);else f[ds.filter]=e.target.value;render();}
  if(ds.groupName!==undefined){config.groups[Number(ds.groupName)].name=e.target.value||'Grup';render();}
  if(ds.groupMode!==undefined){config.groups[Number(ds.groupMode)].mode=e.target.value;render();}
@@ -294,7 +363,7 @@ $('htmlBtn').onclick=()=>download(exportHTML(),exportBaseName()+'.html','text/ht
 $('wordBtn').onclick=()=>{try{download(CEOReport.docx(reportData()),exportBaseName()+'.docx',CEOReport.mime);}catch(e){message('No s’ha pogut exportar Word: '+e.message,true);}};
 $('copyBtn').onclick=async()=>{const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notesText()].join('\n');try{if(navigator.clipboard&&typeof ClipboardItem!=='undefined'){await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([exportHTML()],{type:'text/html'})})]);}else throw Error();message('Taula copiada. Enganxa-la al document.');}catch{const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();message(ok?'Taula copiada com a text amb tabuladors.':'No s’ha pogut copiar. Utilitza l’exportació HTML o CSV.',!ok);}};
 $('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName},null,2),exportBaseName()+'.json','application/json');
-function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.exportName!==undefined&&typeof c.exportName!=='string')throw Error('Nom del fitxer no vàlid.');if(c.reportNotes!==undefined){const n=c.reportNotes;if(!n||typeof n!=='object'||Array.isArray(n)||['custom','visible'].some(k=>n[k]!==undefined&&typeof n[k]!=='boolean')||['text','title'].some(k=>n[k]!==undefined&&typeof n[k]!=='string'))throw Error('Notes de l’informe no vàlides.');}if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
+function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.exportName!==undefined&&typeof c.exportName!=='string')throw Error('Nom del fitxer no vàlid.');if(c.reportNotes!==undefined){const n=c.reportNotes;if(!n||typeof n!=='object'||Array.isArray(n)||['custom','visible'].some(k=>n[k]!==undefined&&typeof n[k]!=='boolean')||['text','title'].some(k=>n[k]!==undefined&&typeof n[k]!=='string'))throw Error('Notes de l’informe no vàlides.');}if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const sel of c.indicators)if(sel.categoryOrder!==undefined&&(!Array.isArray(sel.categoryOrder)||sel.categoryOrder.some(key=>typeof key!=='string')||new Set(sel.categoryOrder).size!==sel.categoryOrder.length))throw Error('Ordre de respostes no vàlid.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
 function usedColumns(s){const used=new Set([...s.config.globalFilters.map(f=>f.variable),...s.config.groups.flatMap(g=>g.filters.map(f=>f.variable)),...s.config.indicators.map(i=>i.variable),...(s.config.weight?[s.config.weight]:[])]);for(const n of [...used])if(s.definitions[n]?.type==='multi'){used.delete(n);for(const src of s.definitions[n].sources)used.add(src);}return [...used];}
 $('configFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(!rows.length)throw Error('Carrega primer el CSV de la nova onada.');const saved=JSON.parse(await f.text());validateSaved(saved);const missing=usedColumns(saved).filter(n=>!headers.includes(n));if(missing.length){pendingConfig=saved;$('mappingFields').innerHTML=missing.map((n,i)=>`<label class="field">${esc(n)}<select data-map-column="${i}" data-old="${esc(n)}"><option value="">Elimina’n els usos</option>${varOptions()}</select></label>`).join('');$('mappingDialog').showModal();}else applySaved(saved,{});}catch(err){message(err.message,true);}finally{e.target.value='';}};
 $('cancelMapping').onclick=()=>{$('mappingDialog').close();pendingConfig=null;};$('applyMapping').onclick=()=>{try{const map=Object.fromEntries([...document.querySelectorAll('[data-map-column]')].map(s=>[s.dataset.old,s.value]));applySaved(pendingConfig,map);$('mappingDialog').close();pendingConfig=null;}catch(e){alert(e.message);}};

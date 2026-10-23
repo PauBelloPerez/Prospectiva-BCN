@@ -90,13 +90,18 @@ function summarize(rows,name,defs,settings){
  const base=settings.denominator==='all'?totalWeight:validWeight;
  return {n:rows.length,valid,missing,unknown,invalidWeight,totalWeight,validWeight,mean:validWeight?sum/validWeight:null,median:median(items,!!settings.weight),counts:[...counts.values()].map(c=>({...c,pct:base?100*c.w/base:null})),base,baseN:settings.denominator==='all'?rows.length-invalidWeight:valid};
 }
+function orderedCategories(categories,order){
+ if(!Array.isArray(order)||!order.length)return categories;
+ const rank=new Map(order.map((key,index)=>[key,index]));
+ return [...categories].sort((a,b)=>(rank.get(a.key)??Infinity)-(rank.get(b.key)??Infinity));
+}
 function analyze(rows,defs,config){
  const filtered=rows.filter(r=>matches(r,config.globalFilters||[],defs));const groups=config.groups.map(g=>({...g,rows:filtered.filter(r=>matches(r,g.filters||[],defs,g.mode))}));
  const analyzedRows=[...new Set(groups.flatMap(g=>g.rows))];
  const result={filtered:filtered.length,groups:groups.map(({rows,...g})=>({...g,n:rows.length})),indicators:[],overlap:0,studyLines:analyzedRows.length?studyMetadata(analyzedRows,Object.keys(rows[0]||{}),'Estudis / dates de la mostra analitzada:'):['Sense entrevistes als grups seleccionats. No es pot identificar una onada per a aquesta taula.']};
  if(groups.length>=2){const a=new Set(groups[0].rows);result.overlap=groups[1].rows.filter(r=>a.has(r)).length;}
  for(const sel of config.indicators){const name=sel.variable,d=defs[name];if(!d)throw Error(`Indicador absent: ${name}`);if(d.type==='number'&&!d.confirmed){result.indicators.push({name,label:d.label,type:d.type,blocked:true});continue;}
-  const stats=groups.map(g=>summarize(g.rows,name,defs,config));const cats=options(filtered,name,defs);result.indicators.push({name,label:d.label,type:d.type,stat:sel.stat||'mean',stats,categories:cats});
+  const stats=groups.map(g=>summarize(g.rows,name,defs,config));const cats=orderedCategories(options(filtered,name,defs),sel.categoryOrder);result.indicators.push({name,label:d.label,type:d.type,stat:sel.stat||'mean',stats,categories:cats});
  }
  return result;
 }
@@ -130,6 +135,6 @@ function studyMetadata(rows,headers,multipleLabel='Estudis / dates del fitxer ca
 }
 function escapeHTML(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function csvCell(v){let s=String(v??'');if(/^[=+@-]/.test(s)&&number(s)===null)s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}
-const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,categoryGroups,summarize,analyze,diagnostics,studyMetadata,escapeHTML,csvCell};
+const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,orderedCategories,categoryGroups,summarize,analyze,diagnostics,studyMetadata,escapeHTML,csvCell};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.CEO=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

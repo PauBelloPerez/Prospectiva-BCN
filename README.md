@@ -192,10 +192,24 @@ En PDF se propone el nombre mediante el título de impresión; el navegador o el
 
 ## Carga del CEO publicado (v1.8)
 
-Sube `REO1169_microdades_anonimitzades.csv`, con ese nombre exacto, a la misma carpeta publicada que `index.html`. En GitHub Pages, el botón **Carrega CEO · REO1169** descarga el CSV de esa carpeta. Espera a que termine la publicación de GitHub Pages tras subirlo.
+Sube `REO1169_microdades_anonimitzades.csv`, con ese nombre exacto, a la misma carpeta publicada que `index.html`. El botón **Carrega CEO · REO1169** intenta primero descargar el archivo público de la raíz de `main` mediante raw.githubusercontent.com; si falla, prueba la carpeta publicada junto a `index.html`. Espera a que termine la publicación de GitHub Pages tras subirlo.
 
 Si abres `index.html` mediante doble clic (`file://`), el botón descarga la versión de la raíz de la rama `main` de `PauBelloPerez/Prospectiva-BCN` mediante raw.githubusercontent.com. Esa ruta debe ser accesible públicamente. Con un servidor local (por ejemplo Live Server), coloca el CSV junto a `index.html`.
 
-La carga usa los selectores de codificación y separador, igual que la carga manual. Una carga correcta inicia un nuevo análisis; un error de red o de lectura conserva el actual. Puedes seguir cargando cualquier otra oleada con «Carrega CSV». Para actualizar el acceso directo a otra oleada, cambia `PUBLISHED_CSV` en `app.js` y las etiquetas REO del botón en `index.html` y `app.js`.
+La carga del CSV publicado detecta automáticamente codificación y separador. Los selectores se aplican solo a la carga manual. Una carga correcta inicia un nuevo análisis; un error de red o de lectura conserva el actual. Puedes seguir cargando cualquier otra oleada con «Carrega CSV». Para actualizar el acceso directo a otra oleada, cambia `PUBLISHED_CSV` en `app.js` y las etiquetas REO del botón en `index.html` y `app.js`.
 
 Se han probado descargas simuladas, errores, codificación y cargas simultáneas. El CSV real no se incluye en este ZIP y queda pendiente verificar su descarga cuando esté publicado.
+
+### Corrección v1.8.1
+
+La descarga directa desde GitHub también se usa desde la web, con la ruta junto a `index.html` como alternativa. Cada intento tiene un límite de 20 segundos; los errores identifican el origen y el fallo. Se añaden versiones a los recursos de la página para renovar la caché tras actualizar.
+
+Se ha comprobado que el CSV presente en la carpeta local del proyecto se lee como Windows-1252, separado por punto y coma, con 2.000 entrevistas y 320 variables. Esta comprobación valida la lectura del fichero, no la publicación ni el acceso de red real a GitHub.
+
+## Orden manual de filas y columnas (v1.9)
+
+Encima de la tabla, abre **Ordena files i columnes**. En «Columnes · grups», mueve cada grupo con las flechas o elige su posición (1 = primera columna de resultados). Los filtros y las bases siguen perteneciendo al mismo grupo. En «Files», elige una variable para ordenar sus respuestas, o «Indicadors (blocs de files)» para mover variables completas, incluidas las numéricas. Las flechas permiten mover una posición; el selector permite llevar un partido directamente al principio.
+
+El orden se guarda mediante «Desa l’anàlisi» y se mantiene en CSV, Word, PDF, HTML y al copiar. Las categorías nuevas se añaden al final; las ocultas por filtros recuperan su posición al quitar el filtro. Las recodificaciones que cambian la clave de una categoría se consideran categorías nuevas. «Restableix l’ordre de les respostes» recupera el orden predeterminado de la variable seleccionada. Los archivos JSON anteriores siguen funcionando.
+
+Si «Diferència» está activa, siempre compara el primer grupo menos el segundo. Reordenar esas columnas cambia también la comparación, indicada en el panel. En las matrices, las columnas son los grupos de origen y las filas las respuestas de destino; se ordenan por separado. El orden no altera los porcentajes ni las bases de cada grupo.
