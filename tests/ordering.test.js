@@ -55,7 +55,7 @@ context.Blob=Blob;context.ClipboardItem=class{constructor(items){this.items=item
 let copied;context.navigator={clipboard:{async write(items){copied=items[0].items;}}};
 (async()=>{
  await elements.copyBtn.onclick();assert.ok((await copied['text/plain'].text()).includes(t[3].join('\t')));
- assert.ok((await copied['text/html'].text()).includes('<td>PSC</td>'));
+ assert.match(await copied['text/html'].text(),/<td[^>]*>PSC<\/td>/);
  elements.saveConfig.onclick();context.saved=JSON.parse(context.captured.data);
  run('validateSaved(saved);install(structuredClone(fixture),"again.csv");applySaved(saved,{});');
  assert.deepEqual(plain(run('result.groups.map(g=>g.name)')),['PSC','JUNTS','ERC','PP']);

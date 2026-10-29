@@ -21,6 +21,7 @@ const csv='REO;EDAT;TEXT\n1169;40;Català\n1169;20;Barcelona';
  reply=()=>({ok:true,arrayBuffer:async()=>Uint8Array.from([...Buffer.from('EDAT;TEXT\n20;Catal','ascii'),0xe0]).buffer});
  await elements.latestCeoBtn.onclick();assert.equal(run('rows[0].TEXT'),'Català');
  elements.encoding.value='auto';elements.delimiter.value='auto';
+ context.original=E.parseCSV(csv);run("install(original,'REO1169_microdades_anonimitzades.csv');");
  requests=[];reply=url=>url.includes('raw.githubusercontent.com')?{ok:false,status:404}:response(csv);
  await elements.latestCeoBtn.onclick();assert.equal(requests.length,2);assert.equal(request.url,'https://example.test/Prospectiva-BCN/REO1169_microdades_anonimitzades.csv');assert.equal(run('rows.length'),2);
  run("config.title='Keep this analysis'");
@@ -30,7 +31,7 @@ const csv='REO;EDAT;TEXT\n1169;40;Català\n1169;20;Barcelona';
  // A local load completed during a pending download wins; the old response must not replace it.
  let release;reply=()=>new Promise(resolve=>release=resolve);const pending=elements.latestCeoBtn.onclick();assert.equal(elements.latestCeoBtn.disabled,true);
  await elements.csvFile.change({target:{files:[{name:'local.csv',arrayBuffer:async()=>buffer('EDAT;NAME\n55;Local')}],value:'local.csv'}});
- release(response(csv));await pending;assert.equal(run('fileName'),'local.csv');assert.equal(run('rows[0].EDAT'),'55');
+ release(response(csv));await pending;assert.ok(run('fileName').endsWith('local.csv'));assert.equal(run('rows.length'),3);assert.equal(run('rows.at(-1).EDAT'),'55');
  context.location.protocol='file:';reply=()=>response(csv);await elements.latestCeoBtn.onclick();
  assert.equal(request.url,'https://raw.githubusercontent.com/PauBelloPerez/Prospectiva-BCN/main/REO1169_microdades_anonimitzades.csv');
  // Both loading paths share the decoder, including Windows-1252 fallback.

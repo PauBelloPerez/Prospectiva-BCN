@@ -116,7 +116,7 @@ El motor no depende de REO1169 ni de una lista fija de columnas:
 - Los grupos que dependen de una columna eliminada se retiran; los filtros generales y el peso deben tener equivalencia antes de continuar. Así no se amplía silenciosamente la muestra ni se elimina una ponderación.
 - Las categorías guardadas que no existen en la nueva ola permanecen señaladas. Revísalas: no se sustituyen por todas las categorías.
 
-«Reutilizable» no significa que cualquier pregunta nueva quede interpretada automáticamente. Debes comprobar el cuestionario y la documentación de cada ola. Las diferencias de universo, modo de entrevista, pregunta, codificación y ponderación importan aunque los nombres de las variables coincidan. Esta versión analiza un archivo cada vez y no combina oleadas automáticamente.
+«Reutilizable» no significa que cualquier pregunta nueva quede interpretada automáticamente. Debes comprobar el cuestionario y la documentación de cada ola. Las diferencias de universo, modo de entrevista, pregunta, codificación y ponderación importan aunque los nombres de las variables coincidan. Desde la versión 1.10 se agrupan los registros de los CSV marcados como activos. La comparabilidad de preguntas y pesos entre oleadas debe revisarse.
 
 ## Escala espanyolisme–catalanisme
 
@@ -182,7 +182,7 @@ Primera comprobación recomendada: carga tu CSV, aplica la plantilla y compara l
 
 ## Privacidad y persistencia
 
-Los microdatos se procesan en memoria en tu navegador. El botón «Carrega CEO · REO1169» descarga el CSV publicado; requiere conexión. La carga manual y el análisis se realizan localmente. No hay analítica, CDN ni subida de microdatos desde la aplicación. Al recargar o cerrar la página se pierden los datos y la configuración no exportada. Guarda el JSON para conservar tu trabajo y vuelve a cargar el CSV cuando lo necesites.
+Los microdatos se procesan en memoria en tu navegador. El botón «Carrega CEO · REO1169» descarga el CSV publicado; requiere conexión. La carga manual y el análisis se realizan localmente. No hay analítica, CDN ni subida de microdatos desde la aplicación. Al recargar o cerrar la página se pierden los datos y la configuración no exportada. Guarda el JSON para conservar tu trabajo y vuelve a cargar los CSV cuando lo necesites.
 
 ## Nombre de las descargas (v1.7)
 
@@ -196,7 +196,7 @@ Sube `REO1169_microdades_anonimitzades.csv`, con ese nombre exacto, a la misma c
 
 Si abres `index.html` mediante doble clic (`file://`), el botón descarga la versión de la raíz de la rama `main` de `PauBelloPerez/Prospectiva-BCN` mediante raw.githubusercontent.com. Esa ruta debe ser accesible públicamente. Con un servidor local (por ejemplo Live Server), coloca el CSV junto a `index.html`.
 
-La carga del CSV publicado detecta automáticamente codificación y separador. Los selectores se aplican solo a la carga manual. Una carga correcta inicia un nuevo análisis; un error de red o de lectura conserva el actual. Puedes seguir cargando cualquier otra oleada con «Carrega CSV». Para actualizar el acceso directo a otra oleada, cambia `PUBLISHED_CSV` en `app.js` y las etiquetas REO del botón en `index.html` y `app.js`.
+La carga del CSV publicado detecta automáticamente codificación y separador. Los selectores se aplican solo a la carga manual. Una carga correcta añade un archivo a la sesión y conserva el análisis; un error de red o de lectura conserva el estado anterior. Puedes seguir cargando cualquier otra oleada con «Afegeix CSV». Para actualizar el acceso directo a otra oleada, cambia `PUBLISHED_CSV` en `app.js` y las etiquetas REO del botón en `index.html` y `app.js`.
 
 Se han probado descargas simuladas, errores, codificación y cargas simultáneas. El CSV real no se incluye en este ZIP y queda pendiente verificar su descarga cuando esté publicado.
 
@@ -213,3 +213,34 @@ Encima de la tabla, abre **Ordena files i columnes**. En «Columnes · grups», 
 El orden se guarda mediante «Desa l’anàlisi» y se mantiene en CSV, Word, PDF, HTML y al copiar. Las categorías nuevas se añaden al final; las ocultas por filtros recuperan su posición al quitar el filtro. Las recodificaciones que cambian la clave de una categoría se consideran categorías nuevas. «Restableix l’ordre de les respostes» recupera el orden predeterminado de la variable seleccionada. Los archivos JSON anteriores siguen funcionando.
 
 Si «Diferència» está activa, siempre compara el primer grupo menos el segundo. Reordenar esas columnas cambia también la comparación, indicada en el panel. En las matrices, las columnas son los grupos de origen y las filas las respuestas de destino; se ordenan por separado. El orden no altera los porcentajes ni las bases de cada grupo.
+
+## Varios CSV por sesión (v1.10)
+
+Pulsa **Afegeix CSV** y selecciona uno o varios archivos (Ctrl o Mayús). Puedes añadir otros después; se conservan grupos, filtros, recodificaciones, orden y notas. En **Fitxers de la sessió**, cada casilla incluye o excluye ese archivo del conjunto analizado; «Treu» lo retira de memoria. Los archivos añadidos quedan marcados inicialmente. El botón del CEO publicado también añade su archivo. Los datos del ejemplo sintético se sustituyen al cargar datos reales.
+
+Se apilan entrevistas, alineando columnas por su nombre exacto. Si una columna no existe en una oleada, su valor es ausente estructural: no se inventan respuestas, no se considera cero y los filtros y bases siguen sus reglas normales. Si falta el peso, se excluyen esos registros del cálculo ponderado. Los registros de archivos distintos no se deduplican por ID de entrevistado. Una copia exacta de un archivo ya cargado (mismas columnas, filas en el mismo orden y valores, incluso con otro nombre) se omite. No se detectan solapamientos parciales entre distintos archivos.
+
+Los archivos marcados se analizan conjuntamente. Para comparar oleadas por columnas, crea grupos con condiciones REO distintas; el selector global REO sigue restringiendo todo el análisis. Los encabezados muestran los REO y fechas de las entrevistas que realmente entran en los grupos. Al desmarcar o retirar un archivo, sus entrevistas dejan de contribuir. Las definiciones y los filtros se conservan aunque sus variables ya no estén presentes: se mostrarán datos ausentes y el panel lo indicará, en lugar de eliminar filtros silenciosamente.
+
+El JSON de «Desa l’anàlisi» incluye la lista de archivos y las casillas seleccionadas, pero no sus microdatos. Para recuperar el trabajo, carga todos los CSV y después abre el JSON. La selección se recupera cuando coinciden de forma única el nombre, el número de filas y las columnas; los archivos adicionales quedan desmarcados. Si no coinciden, se mantiene la selección actual y se avisa. Los JSON anteriores siguen funcionando. No hay guardado automático entre visitas.
+
+La lectura múltiple es atómica: si algún CSV del lote falla, no se añade ninguno del lote ni se sustituye el análisis anterior. Se han probado con datos sintéticos la suma de registros, las columnas ausentes, los pesos, la duplicación, los filtros REO, las exportaciones, el JSON y las cargas simultáneas. Revisión visual en navegador pendiente.
+
+## Columnas con subgrupos y copia para informes (v1.11)
+
+En «Construeix els grups», pulsa **Subgrups de columnes**. Elige «Columnes principals»: una variable categórica (por ejemplo, EDAT_GR) crea automáticamente los grupos de edad; «Grups actuals» conserva las condiciones de los grupos ya definidos. En «Subdivideix cada columna per», elige SEXE, GENERE u otra variable categórica de respuesta única. Marca las respuestas que quieres mostrar y revisa la previsualización antes de pulsar «Crea els subgrups». Se mantienen los indicadores, filtros generales, pesos, denominadores, notas y opciones del análisis.
+
+Cada grupo principal genera una columna por respuesta seleccionada, incluidas combinaciones sin entrevistas. La previsualización muestra el n sin ponderar y las entrevistas del grupo que quedan fuera de los subgrupos (valores ausentes o respuestas no seleccionadas). Cada porcentaje utiliza la base de su propio subgrupo. Se admiten hasta 50 columnas; si se supera el límite, reduce las respuestas seleccionadas o los grupos principales. La opción Diferència se desactiva al crear subgrupos y se puede reactivar manualmente.
+
+El filtro del subgrupo se añade mediante I (AND) al conjunto de condiciones del grupo principal, aunque este use O (OR). Esos filtros adicionales se pueden editar en el editor de grupos y se conservan en el JSON. Al cambiar las condiciones del subgrupo se actualiza su etiqueta. Al renombrar manualmente una columna, se usa el nombre completo elegido y se elimina su cabecera agrupada automática. Los grupos se pueden subdividir de nuevo: se conservan las restricciones anteriores.
+
+Las cabeceras muestran el grupo principal y, debajo, los subgrupos y sus tamaños. Se mantienen en la pantalla, HTML/PDF, Word y copia con formato; CSV y texto plano llevan nombres completos («18–24 · Dona») para que cada columna se pueda identificar por sí sola. Si un informe se divide en varias tablas, se repiten las cabeceras que correspondan a cada parte.
+
+**Copia la taula** copia una tabla completa y editable, con título, metadatos, colores y notas, para pegar con Ctrl+V en Word. Usa «Mantener formato de origen» al pegar. La copia no divide las columnas en varias tablas; las exportaciones siguen adaptándolas a páginas A4. Si el navegador rechaza la API del portapapeles, se intenta una alternativa con HTML; si solo permite texto, se informa explícitamente. Puedes usar la exportación Word si el pegado no conserva el formato en tu editor.
+
+Pruebas automatizadas: cruce de edad y sexo, condiciones OR del grupo principal, filtros AND adicionales, pesos, combinaciones vacías, previsualización y cancelación, JSON y remapeo de variables, edición de filtros, cabeceras HTML y DOCX, CSV, tabla ancha en portapapeles y alternativas ante permisos de copia. Pruebas con datos sintéticos y DOM simulado; no se ha verificado visualmente el pegado en Word.
+
+
+### v1.11.1 · Observacions per cel·la
+
+Al costat del format de l’informe, desmarca «Mostra n a cada cel·la» per mostrar només percentatges, mitjanes i medianes. Es mantenen les bases dels indicadors i el n de les capçaleres. S’aplica a la taula, al porta-retalls i a CSV, HTML, Word i PDF. La preferència es desa amb l’anàlisi; les sessions antigues continuen mostrant el n. No canvia els càlculs.

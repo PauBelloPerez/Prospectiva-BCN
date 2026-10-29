@@ -10,10 +10,10 @@ function layout(mode='portrait',dataColumns=0){
  const wide=orientation==='landscape',width=wide?PAGE_HEIGHT:PAGE_WIDTH,height=wide?PAGE_WIDTH:PAGE_HEIGHT;
  return {orientation,width,height,margin:MARGIN,tableWidth:width-2*MARGIN,maxDataColumns:wide?8:3,fontSize:wide?9:10};
 }
-function validate(report){
+function validate(report,allowWide=false){
  if(!report||!Array.isArray(report.tables)||!report.tables.length)throw Error('No hi ha cap taula per exportar.');
  const page=layout(report.orientation||'portrait');
- for(const t of report.tables){if(!Array.isArray(t.headers)||t.headers.length<2||t.headers.length>page.maxDataColumns+1)throw Error('Massa columnes per a l’orientació seleccionada.');if(!Array.isArray(t.rows))throw Error('Taula incompleta.');for(const r of t.rows){if(!['section','base','data','numeric','notice'].includes(r.kind)||!Array.isArray(r.cells))throw Error('Fila no vàlida.');if(r.cells.length!==(['section','notice'].includes(r.kind)?1:t.headers.length))throw Error('El nombre de cel·les no coincideix amb les columnes.');}}
+ for(const t of report.tables){if(!Array.isArray(t.headers)||t.headers.length<2||(!allowWide&&t.headers.length>page.maxDataColumns+1))throw Error('Massa columnes per a l’orientació seleccionada.');if(t.headerBands&&(!Array.isArray(t.headerBands)||t.headerBands.length!==t.headers.length||t.headerBands.some(b=>b!==null&&(!b||typeof b.label!=='string'||typeof b.key!=='string'))))throw Error('Capçalera de grups no vàlida.');if(t.headerLabels&&(!Array.isArray(t.headerLabels)||t.headerLabels.length!==t.headers.length))throw Error('Capçalera de subgrups no vàlida.');if(!Array.isArray(t.rows))throw Error('Taula incompleta.');for(const r of t.rows){if(!['section','base','data','numeric','notice'].includes(r.kind)||!Array.isArray(r.cells))throw Error('Fila no vàlida.');if(r.cells.length!==(['section','notice'].includes(r.kind)?1:t.headers.length))throw Error('El nombre de cel·les no coincideix amb les columnes.');}}
 }
 // Una pàgina vertical admet tres columnes de resultats sense reduir excessivament la lletra.
 // La diferència acompanya sempre els dos grups als quals es refereix.
@@ -44,10 +44,33 @@ function noteStyles(settings){
  return ['Note','NoteHeading'].map(id=>`<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${id}"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="${id==='NoteHeading'?240:0}" w:after="100" w:line="280" w:lineRule="auto"/></w:pPr><w:rPr>${rpr}${s.bold||id==='NoteHeading'?'<w:b/>':''}</w:rPr></w:style>`).join('');
 }
 
-function html(report){
- validate(report);const page=layout(report.orientation||'portrait');
+function headerRows(t){
+ const lower=(t.headerLabels||t.headers).map(text=>({text,span:1}));
+ if(!t.headerBands?.some(Boolean))return [lower];
+ const upper=[];
+ for(const b of t.headerBands){const prev=upper.at(-1);if(b&&prev?.key===b.key&&prev.text===b.label){prev.span++;}else upper.push({text:b?.label||'',span:1,key:b?.key??null});}
+ return [upper,lower];
+}
+function headerHTML(t){return headerRows(t).map((row,i,all)=>'<tr>'+row.map(c=>`<th scope="${i<all.length-1?'colgroup':'col'}"${c.span>1?` colspan="${c.span}"`:''}>${htmlText(c.text)}</th>`).join('')+'</tr>').join('');}
+function clipboardHTML(report){
+ const page=layout(report.orientation||'portrait'),font=`font-family:Calibri,Arial,sans-serif;font-size:${page.fontSize}pt;`;
+ return html(report,true).replace(/<h1>/g,'<h1 style="font-family:Calibri,Arial,sans-serif;font-size:18pt;color:#292326">')
+ .replace(/<table>/g,`<table style="${font}border-collapse:collapse;table-layout:fixed;width:100%;margin-bottom:12pt">`)
+ .replace(/<th\b([^>]*)>/g,(_,attrs)=>`<th${attrs} style="${font}background-color:#DB2828;color:#ffffff;font-weight:bold;padding:5pt;border:1px solid #e8dfe1;text-align:center;vertical-align:top">`)
+ .replace(/<tr class="(section|base|data|numeric|notice)">([\s\S]*?)<\/tr>/g,(_,kind,cells)=>{
+  let index=0;return `<tr class="${kind}">`+cells.replace(/<td\b([^>]*)>/g,(_,attrs)=>{
+   const first=index++===0,fill=kind==='section'?'#fcf5f5':kind==='numeric'&&first?'#FDECEC':kind==='notice'?'#fff6e5':'#ffffff';
+   const color=kind==='numeric'&&first?'#A21D1D':kind==='base'?'#73696d':'#292326';
+   return `<td${attrs} style="${font}${kind==='base'?'font-size:8pt;':''}background-color:${fill};color:${color};${kind==='section'||kind==='numeric'&&first?'font-weight:bold;':''}padding:5pt;border-bottom:1px solid #e8dfe1;text-align:${first?'left':'right'};vertical-align:top">`;
+  })+'</tr>';
+ });
+}
+
+
+function html(report,allowWide=false){
+ validate(report,allowWide);const page=layout(report.orientation||'portrait');
  const metadata=(report.studyLines||[]).map(line=>`<p>${htmlText(line)}</p>`).join('');
- const tables=report.tables.map((t,i)=>`<section class="table-block">${report.tables.length>1?`<h2>Taula ${i+1} · ${htmlText(t.label||'Comparació de grups')}</h2>`:''}${metadata?`<div class="study-meta">${metadata}</div>`:''}<table><colgroup>${widths(t.headers.length,page.orientation).map(w=>`<col style="width:${100*w/page.tableWidth}%">`).join('')}</colgroup><thead><tr>${t.headers.map(h=>`<th scope="col">${htmlText(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr class="${r.kind}">${r.cells.map(c=>`<td${['section','notice'].includes(r.kind)?` colspan="${t.headers.length}"`:''}>${htmlText(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`).join('');
+ const tables=report.tables.map((t,i)=>`<section class="table-block">${report.tables.length>1?`<h2>Taula ${i+1} · ${htmlText(t.label||'Comparació de grups')}</h2>`:''}${metadata?`<div class="study-meta">${metadata}</div>`:''}<table><colgroup>${widths(t.headers.length,page.orientation).map(w=>`<col style="width:${100*w/page.tableWidth}%">`).join('')}</colgroup><thead>${headerHTML(t)}</thead><tbody>${t.rows.map(r=>`<tr class="${r.kind}">${r.cells.map(c=>`<td${['section','notice'].includes(r.kind)?` colspan="${t.headers.length}"`:''}>${htmlText(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`).join('');
  return `<!doctype html><html lang="ca"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${xml(report.fileTitle||report.title)}</title><style>${style(page)}</style></head><body><h1>${htmlText(report.title)}</h1>${tables}${notesHTML(report)}</body></html>`;
 }
 function runs(text){return String(text??'').split(/\r\n?|\n/).map((s,i)=>(i?'<w:r><w:br/></w:r>':'')+`<w:r><w:t xml:space="preserve">${xml(s)}</w:t></w:r>`).join('');}
@@ -58,7 +81,9 @@ function para(text,opts={}){
 function cell(text,width,opts={}){return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${opts.span?`<w:gridSpan w:val="${opts.span}"/>`:''}${opts.fill?`<w:shd w:val="clear" w:color="auto" w:fill="${opts.fill}"/>`:''}<w:vAlign w:val="top"/></w:tcPr>${para(text,opts)}</w:tc>`;}
 function tableXML(t,orientation='portrait'){
  const page=layout(orientation),TABLE_WIDTH=page.tableWidth;const ws=widths(t.headers.length,orientation);let s=`<w:tbl><w:tblPr><w:tblW w:w="${TABLE_WIDTH}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="single" w:sz="4" w:color="E8DFE1"/><w:right w:val="nil"/><w:insideH w:val="single" w:sz="4" w:color="E8DFE1"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="90" w:type="dxa"/><w:left w:w="110" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="110" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${ws.map(w=>`<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`;
- s+=`<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${t.headers.map((h,i)=>cell(h,ws[i],{style:'TableHeader',fill:'DB2828',align:i?'right':'left',keep:true})).join('')}</w:tr>`;
+ for(const row of headerRows(t)){
+  let offset=0;s+='<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>'+row.map(h=>{const width=ws.slice(offset,offset+h.span).reduce((a,b)=>a+b,0);offset+=h.span;return cell(h.text,width,{span:h.span>1?h.span:null,style:'TableHeader',fill:'DB2828',align:offset===1?'left':h.span>1?'center':'right',keep:true});}).join('')+'</w:tr>';
+ }
  for(const r of t.rows){const merged=['section','notice'].includes(r.kind);s+=`<w:tr><w:trPr><w:cantSplit/></w:trPr>${r.cells.map((c,i)=>cell(c,merged?TABLE_WIDTH:ws[i],{span:merged?t.headers.length:null,style:r.kind==='numeric'&&i===0?'NumericIndicator':r.kind==='section'?'TableSection':r.kind==='base'?'TableBase':r.kind==='notice'?'TableNotice':'TableText',align:merged||!i?'left':'right',fill:r.kind==='numeric'&&i===0?'FDECEC':r.kind==='section'?'FCF5F5':r.kind==='notice'?'FFF6E5':null,keep:r.kind==='section'||r.kind==='base'})).join('')}</w:tr>`;}
  return s+'</w:tbl>';
 }
@@ -79,7 +104,7 @@ function parts(report){
   'word/styles.xml':styles(page,report.notesStyle),
   'word/_rels/document.xml.rels':declaration+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
   'docProps/core.xml':declaration+`<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xml(report.title)}</dc:title><dc:creator>Prospectiva · Explorador CEO</dc:creator><dc:language>ca-ES</dc:language></cp:coreProperties>`,
-  'docProps/app.xml':declaration+'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Prospectiva · Explorador CEO</Application><AppVersion>1.9</AppVersion></Properties>'
+  'docProps/app.xml':declaration+'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Prospectiva · Explorador CEO</Application><AppVersion>1.11.1</AppVersion></Properties>'
  };
 }
 // ZIP estàndard sense compressió: evita carregar biblioteques des d’Internet.
@@ -93,6 +118,6 @@ function zip(files){
  for(const e of entries){u32(0x02014b50);u16(20);u16(20);u16(0x800);u16(0);u16(0);u16(33);u32(e.crc);u32(e.data.length);u32(e.data.length);u16(e.n.length);u16(0);u16(0);u16(0);u16(0);u32(0);u32(e.offset);bytes(e.n);}
  u32(0x06054b50);u16(0);u16(0);u16(entries.length);u16(entries.length);u32(centralSize);u32(localSize);u16(0);return out;
 }
-const api={noteStyle,notesHTML,layout,columnSets,widths,html,parts,docx:report=>zip(parts(report)),mime:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',page:{width:PAGE_WIDTH,height:PAGE_HEIGHT,margin:MARGIN,tableWidth:TABLE_WIDTH},header};
+const api={headerRows,headerHTML,clipboardHTML,noteStyle,notesHTML,layout,columnSets,widths,html,parts,docx:report=>zip(parts(report)),mime:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',page:{width:PAGE_WIDTH,height:PAGE_HEIGHT,margin:MARGIN,tableWidth:TABLE_WIDTH},header};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.CEOReport=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

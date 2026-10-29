@@ -65,7 +65,7 @@ function decode(raw,d){
  const label=Object.hasOwn(d.labels||{},token)?d.labels[token]:String(raw).trim();return {missing:false,key:norm(label),label};
 }
 function numeric(v,d){if((d.min!==null&&d.min!==''&&v<Number(d.min))||(d.max!==null&&d.max!==''&&v>Number(d.max)))return {missing:true,reason:'unknown'};const value=d.reverse?Number(d.min)+Number(d.max)-v:v;return {missing:false,value,key:String(value),label:String(value)};}
-function cell(row,name,defs){const d=defs[name];if(!d)throw Error(`Variable absent: ${name}`);if(d.type==='multi'){let vals=new Map();for(const f of d.sources||[]){const x=decode(row[f],defs[f]);if(!x.missing)vals.set(x.key,x.label);}return vals.size?{missing:false,values:vals}:{missing:true,reason:'missing'};}return decode(row[name],d);}
+function cell(row,name,defs){const d=defs[name];if(!d)throw Error(`Variable absent: ${name}`);if(d.type==='multi'){let vals=new Map();for(const f of d.sources||[]){if(!Object.hasOwn(row,f))continue;const x=decode(row[f],defs[f]);if(!x.missing)vals.set(x.key,x.label);}return vals.size?{missing:false,values:vals}:{missing:true,reason:'missing'};}return Object.hasOwn(row,name)?decode(row[name],d):{missing:true,reason:'unavailable'};}
 function match(row,filter,defs){
  if(!defs[filter.variable])throw Error(`Filtre sense columna: ${filter.variable}`);
  const x=cell(row,filter.variable,defs);if(filter.op==='missing')return x.missing;if(filter.op==='valid')return !x.missing;if(x.missing)return false;
@@ -95,10 +95,37 @@ function orderedCategories(categories,order){
  const rank=new Map(order.map((key,index)=>[key,index]));
  return [...categories].sort((a,b)=>(rank.get(a.key)??Infinity)-(rank.get(b.key)??Infinity));
 }
+const groupFilters=g=>[...(g.filters||[]),...(g.columnFilters||[])];
+const groupMatches=(row,g,defs)=>matches(row,g.filters||[],defs,g.mode)&&matches(row,g.columnFilters||[],defs,'all');
+function subdivideGroups(rows,defs,config,baseVariable,variable,keys){
+ if(defs[variable]?.type!=='category')throw Error('Tria una variable de subgrups categòrica de resposta única.');
+ if(baseVariable&&baseVariable===variable)throw Error('Tria variables diferents per a les columnes i els subgrups.');
+ const filtered=rows.filter(r=>matches(r,config.globalFilters||[],defs));
+ const bases=baseVariable?categoryGroups(rows,baseVariable,defs,config.globalFilters||[]).categories.map(c=>c.group):config.groups;
+ const available=options(filtered,variable,defs),selected=new Set(keys);
+ if(!selected.size)throw Error('Selecciona almenys una resposta per als subgrups.');
+ if([...selected].some(key=>!available.some(c=>c.key===key)))throw Error('Hi ha respostes que ja no estan disponibles. Revisa la selecció.');
+ const choices=available.filter(c=>selected.has(c.key));
+ if(!bases.length)throw Error('No hi ha grups principals amb aquestes dades.');
+ if(bases.length*choices.length>50)throw Error('El resultat supera el màxim de 50 columnes. Selecciona menys respostes o redueix els grups principals.');
+ const groups=[],preview=[];
+ for(const [i,base] of bases.entries()){
+  const parentRows=filtered.filter(row=>groupMatches(row,base,defs)),counts=[];
+  for(const choice of choices){
+   const filter={variable,op:'in',values:[choice.key]};
+   counts.push(parentRows.filter(row=>match(row,filter,defs)).length);
+   groups.push({...structuredClone(base),name:base.name+' · '+choice.label,columnFilters:[...structuredClone(base.columnFilters||[]),filter],headerParent:base.name,headerLabel:choice.label,headerKey:String(i)});
+  }
+  preview.push({name:base.name,n:parentRows.length,counts,excluded:parentRows.length-counts.reduce((a,b)=>a+b,0)});
+ }
+ return {groups,preview,choices};
+}
+
+
 function analyze(rows,defs,config){
- const filtered=rows.filter(r=>matches(r,config.globalFilters||[],defs));const groups=config.groups.map(g=>({...g,rows:filtered.filter(r=>matches(r,g.filters||[],defs,g.mode))}));
+ const filtered=rows.filter(r=>matches(r,config.globalFilters||[],defs));const groups=config.groups.map(g=>({...g,rows:filtered.filter(r=>groupMatches(r,g,defs))}));
  const analyzedRows=[...new Set(groups.flatMap(g=>g.rows))];
- const result={filtered:filtered.length,groups:groups.map(({rows,...g})=>({...g,n:rows.length})),indicators:[],overlap:0,studyLines:analyzedRows.length?studyMetadata(analyzedRows,Object.keys(rows[0]||{}),'Estudis / dates de la mostra analitzada:'):['Sense entrevistes als grups seleccionats. No es pot identificar una onada per a aquesta taula.']};
+ const result={filtered:filtered.length,groups:groups.map(({rows,...g})=>({...g,n:rows.length})),indicators:[],overlap:0,studyLines:analyzedRows.length?studyMetadata(analyzedRows,[...new Set(analyzedRows.flatMap(row=>Object.keys(row)))],'Estudis / dates de la mostra analitzada:'):['Sense entrevistes als grups seleccionats. No es pot identificar una onada per a aquesta taula.']};
  if(groups.length>=2){const a=new Set(groups[0].rows);result.overlap=groups[1].rows.filter(r=>a.has(r)).length;}
  for(const sel of config.indicators){const name=sel.variable,d=defs[name];if(!d)throw Error(`Indicador absent: ${name}`);if(d.type==='number'&&!d.confirmed){result.indicators.push({name,label:d.label,type:d.type,blocked:true});continue;}
   const stats=groups.map(g=>summarize(g.rows,name,defs,config));const cats=orderedCategories(options(filtered,name,defs),sel.categoryOrder);result.indicators.push({name,label:d.label,type:d.type,stat:sel.stat||'mean',stats,categories:cats});
@@ -135,6 +162,6 @@ function studyMetadata(rows,headers,multipleLabel='Estudis / dates del fitxer ca
 }
 function escapeHTML(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function csvCell(v){let s=String(v??'');if(/^[=+@-]/.test(s)&&number(s)===null)s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}
-const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,orderedCategories,categoryGroups,summarize,analyze,diagnostics,studyMetadata,escapeHTML,csvCell};
+const api={norm,number,parseCSV,definition,decode,cell,match,matches,options,orderedCategories,categoryGroups,groupFilters,groupMatches,subdivideGroups,summarize,analyze,diagnostics,studyMetadata,escapeHTML,csvCell};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.CEO=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

@@ -1,12 +1,65 @@
 'use strict';
 const E=CEO,$=id=>document.getElementById(id),esc=E.escapeHTML;
 let studyLines=[],rows=[],headers=[],defs=Object.create(null),fileName='',isDemo=false,result=null,optionCache=new Map(),currentEdit=null,variableDraft=null,pendingConfig=null;
-const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',exportName:'comparacio_ceo',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,difference:true,weight:''});
+const initial=()=>({version:1,title:'Comparació de perfils',reportOrientation:'auto',exportName:'comparacio_ceo',globalFilters:[],groups:[{name:'Grup A',mode:'all',filters:[]},{name:'Grup B',mode:'all',filters:[]}],indicators:[],denominator:'valid',decimals:1,showCellN:true,difference:true,weight:''});
 let config=initial();
 // Canvia aquest nom quan publiquis una nova onada al repositori.
 const PUBLISHED_CSV='REO1169_microdades_anonimitzades.csv';
 const REPOSITORY_RAW='https://raw.githubusercontent.com/PauBelloPerez/Prospectiva-BCN/main/';
 let csvLoadId=0;
+let datasets=[],nextDatasetId=1;
+function sameDataset(a,b){
+ if(a.headers.length!==b.headers.length||a.rows.length!==b.rows.length)return false;
+ const columns=new Set(b.headers);if(!a.headers.every(h=>columns.has(h)))return false;
+ return a.rows.every((row,i)=>a.headers.every(h=>row[h]===b.rows[i][h]));
+}
+function sourceManifest(){return datasets.map(d=>({name:d.name,active:d.active,rowCount:d.data.rows.length,columns:[...d.data.headers]}));}
+function syncDatasetRows(){
+ const active=datasets.filter(d=>d.active);
+ rows=active.flatMap(d=>d.data.rows);fileName=active.map(d=>d.name).join(' + ');isDemo=active.some(d=>d.demo);optionCache.clear();
+ $('fileLabel').textContent=datasets.length?`${datasets.length} fitxer(s) a la sessió · ${active.length} actiu(s) · ${rows.length} entrevistes`:'CSV o TSV. Pots seleccionar diversos fitxers.';
+}
+function rebuildDatasets(){
+ // Keep definitions when removing sources, so filters never silently disappear.
+ for(const d of datasets)for(const h of d.data.headers){if(!headers.includes(h))headers.push(h);if(!Object.hasOwn(defs,h))defs[h]=E.definition(h);}
+ syncDatasetRows();render();
+}
+function renderFiles(){
+ $('saveConfig').disabled=!datasets.length;
+ $('sessionFiles').hidden=!datasets.length;
+ $('fileList').innerHTML=datasets.map(d=>`<li><label><input type="checkbox" data-source-active="${d.id}" ${d.active?'checked':''}><span><b>${esc(d.name)}</b><small>${d.data.rows.length} entrevistes · ${d.data.headers.length} variables${d.demo?' · Exemple sintètic':''}</small></span></label><button class="quiet" data-source-remove="${d.id}" aria-label="Treu ${esc(d.name)} de la sessió">Treu</button></li>`).join('');
+ const active=datasets.filter(d=>d.active),used=new Set([...config.indicators.flatMap(s=>defs[s.variable]?.type==='multi'?defs[s.variable].sources:[s.variable]),...config.globalFilters.map(f=>f.variable),...config.groups.flatMap(g=>E.groupFilters(g).map(f=>f.variable)),...(config.weight?[config.weight]:[])]);
+ const absent=active.map(d=>({name:d.name,columns:[...used].filter(h=>!d.data.headers.includes(h))})).filter(x=>x.columns.length);
+ $('fileSchemaHint').textContent=!active.length?'Cap fitxer actiu. Marca’n un per calcular la taula.':absent.length?absent.map(x=>`${x.name}: variables absents en aquest fitxer: ${x.columns.join(', ')}.`).join(' ')+' Es tracten com a dades absents; els filtres i la ponderació poden excloure aquests registres.':active.length>1?'S’agrupen les entrevistes dels fitxers marcats. Les variables coincideixen pel nom exacte; revisa que les preguntes i les codificacions siguin comparables.':'La taula utilitza el fitxer marcat i els filtres de l’anàlisi.';
+}
+function addDatasets(incoming){
+ const added=[],skipped=[];
+ for(const entry of incoming){
+  const existing=[...datasets.filter(d=>!d.demo),...added].find(d=>sameDataset(d.data,entry.data));
+  if(existing){skipped.push(entry.name);continue;}
+  added.push({id:nextDatasetId++,name:entry.name,data:entry.data,active:true,demo:false});
+ }
+ if(!added.length){message('No s’han afegit duplicats: '+skipped.join(', ')+'. Si el fitxer està desmarcat, activa’l a la llista.');return;}
+ csvLoadId++;
+ if(datasets.some(d=>d.demo)||(!datasets.length&&!headers.length)){const first=added.shift();install(first.data,first.name);}
+ datasets.push(...added);
+ for(const [name,d] of Object.entries(defs))if(/^ESP_CAT_0_10/.test(name.toUpperCase()))d.confirmed=false;
+ rebuildDatasets();
+ message(`${datasets.length} fitxer(s) a la sessió; ${rows.length} entrevistes actives.${skipped.length?' Duplicats omesos: '+skipped.join(', ')+'.':''} Revisa els fitxers marcats i els filtres abans d’interpretar la taula.`);
+}
+function changeSource(id,active,remove=false){
+ const d=datasets.find(d=>d.id===id);if(!d)return;
+ csvLoadId++;if(remove)datasets=datasets.filter(d=>d.id!==id);else d.active=active;
+ rebuildDatasets();message(remove?'Fitxer retirat de la sessió. La configuració de l’anàlisi es conserva.':'Selecció de fitxers actualitzada.');
+}
+function savedSourceSelection(saved){
+ if(!saved.sourceFiles)return null;
+ const matched=saved.sourceFiles.map(s=>datasets.filter(d=>d.name===s.name&&d.data.rows.length===s.rowCount&&d.data.headers.length===s.columns.length&&s.columns.every(h=>d.data.headers.includes(h))));
+ if(matched.some(m=>m.length!==1)||new Set(matched.map(m=>m[0].id)).size!==matched.length)return null;
+ return new Map(saved.sourceFiles.map((s,i)=>[matched[i][0].id,s.active]));
+}
+
+
 function message(text,error=false){$('status').hidden=!text;$('status').className='notice'+(error?' error':'');$('status').textContent=text;}
 function fmt(v,dec=config.decimals){return v===null||v===undefined||!Number.isFinite(v)?'—':v.toLocaleString('ca-ES',{minimumFractionDigits:dec,maximumFractionDigits:dec});}
 function opts(name){if(!optionCache.has(name))optionCache.set(name,E.options(rows,name,defs));return optionCache.get(name);}
@@ -20,9 +73,9 @@ function renderWaveSelector(){
  const choices=opts(name),filters=config.globalFilters.filter(f=>f.variable===name);
  const single=filters.length===1&&filters[0].op==='in'&&filters[0].values?.length===1;
  const selected=!filters.length?'':single&&choices.some(c=>c.key===filters[0].values[0])?filters[0].values[0]:'@custom';
- $('waveSelect').innerHTML='<option value="">Totes les onades del fitxer</option>'+choices.map(c=>`<option value="${esc(c.key)}">REO ${esc(c.label)}</option>`).join('')+(selected==='@custom'?'<option value="@custom">Filtres REO personalitzats</option>':'');
+ $('waveSelect').innerHTML='<option value="">Totes les onades actives</option>'+choices.map(c=>`<option value="${esc(c.key)}">REO ${esc(c.label)}</option>`).join('')+(selected==='@custom'?'<option value="@custom">Filtres REO personalitzats</option>':'');
  $('waveSelect').value=selected;
- $('waveHint').textContent=choices.length>1?'El fitxer conté diversos REO. Tria una onada per filtrar les entrevistes i el seu encapçalament.':'El REO, MES i ANY de l’encapçalament corresponen a les entrevistes dels grups seleccionats.';
+ $('waveHint').textContent=choices.length>1?'Els fitxers actius contenen diversos REO. Tria una onada per filtrar les entrevistes i el seu encapçalament.':'El REO, MES i ANY de l’encapçalament corresponen a les entrevistes dels grups seleccionats.';
 }
 $('waveSelect').onchange=()=>{
  const name=reoColumn(),key=$('waveSelect').value;if(!name||key==='@custom')return;
@@ -30,24 +83,73 @@ $('waveSelect').onchange=()=>{
  if(key!=='')config.globalFilters.push({variable:name,op:'in',values:[key]});
  render();
 };
+function filterList(scope){return scope==='global'?config.globalFilters:scope.startsWith('column:')?(config.groups[Number(scope.slice(7))].columnFilters||=[]):config.groups[Number(scope)].filters;}
+function refreshSubgroupLabel(scope){
+ if(!scope.startsWith('column:'))return;
+ const g=config.groups[Number(scope.slice(7))];if(!g.headerParent)return;
+ if(g.columnFilters?.length){g.headerLabel=g.columnFilters.map(filterText).join(' I ');g.name=g.headerParent+' · '+g.headerLabel;}
+ else{g.name=g.headerParent;delete g.headerParent;delete g.headerLabel;delete g.headerKey;}
+}
+function groupFilterText(g){const base=g.filters.length?g.filters.map(filterText).join(g.mode==='any'?' O ':' I '):'tota la mostra filtrada';return g.columnFilters?.length?'('+base+') I '+g.columnFilters.map(filterText).join(' I '):base;}
+function subgroupError(text=''){$('subgroupError').textContent=text;$('subgroupError').hidden=!text;}
+function subgroupPlan(){return E.subdivideGroups(rows,defs,config,$('subgroupBase').value,$('subgroupVariable').value,[...document.querySelectorAll('[data-subgroup-key]')].filter(c=>c.checked).map(c=>c.dataset.subgroupKey));}
+function previewSubgroups(){
+ subgroupError();$('subgroupPreview').innerHTML='';
+ try{
+  const plan=subgroupPlan();
+  $('subgroupPreview').innerHTML='<table class="subgroup-preview"><thead><tr><th>Grup principal</th>'+plan.choices.map(c=>`<th>${esc(c.label)}</th>`).join('')+'<th>Fora dels subgrups</th></tr></thead><tbody>'+plan.preview.map(p=>'<tr><th>'+esc(p.name)+'</th>'+p.counts.map(n=>'<td>'+n+'</td>').join('')+'<td>'+p.excluded+'</td></tr>').join('')+'</tbody></table>';
+  $('subgroupSummary').textContent=plan.groups.length+' columnes. Es mostren nombres d’entrevistes sense ponderar. «Fora dels subgrups» inclou respostes no seleccionades i dades absents. Cada percentatge es calcula dins del seu subgrup.';
+  $('subgroupApply').disabled=false;
+ }catch(err){subgroupError(err.message);$('subgroupSummary').textContent='';$('subgroupApply').disabled=true;}
+}
+function renderSubgroupChoices(){
+ const variable=$('subgroupVariable').value;
+ const filtered=rows.filter(r=>E.matches(r,config.globalFilters,defs));
+ const choices=defs[variable]?.type==='category'?E.options(filtered,variable,defs):[];
+ $('subgroupChoices').innerHTML=choices.map(c=>`<label><input type="checkbox" data-subgroup-key="${esc(c.key)}" checked><span>${esc(c.label)}</span></label>`).join('');
+ previewSubgroups();
+}
+$('subgroupBtn').onclick=()=>{
+ const names=variables().filter(n=>defs[n].type==='category');
+ const choices=names.map(n=>`<option value="${esc(n)}">${esc(defs[n].label)} · ${esc(n)}</option>`).join('');
+ $('subgroupBase').innerHTML='<option value="">Grups actuals</option>'+choices;$('subgroupBase').value='';
+ $('subgroupVariable').innerHTML='<option value="">Tria una variable</option>'+choices;
+ $('subgroupVariable').value=names.find(n=>n.toUpperCase()==='SEXE')||names.find(n=>n.toUpperCase()==='GENERE')||'';
+ renderSubgroupChoices();$('subgroupDialog').showModal();
+};
+$('subgroupBase').onchange=previewSubgroups;
+$('subgroupVariable').onchange=renderSubgroupChoices;
+$('subgroupAll').onclick=()=>{document.querySelectorAll('[data-subgroup-key]').forEach(c=>c.checked=true);previewSubgroups();};
+$('subgroupNone').onclick=()=>{document.querySelectorAll('[data-subgroup-key]').forEach(c=>c.checked=false);previewSubgroups();};
+$('subgroupCancel').onclick=()=>$('subgroupDialog').close();
+$('subgroupApply').onclick=()=>{
+ try{
+  const plan=subgroupPlan(),next={...config,groups:plan.groups,difference:false};
+  E.analyze(rows,defs,next);config=next;render();$('subgroupDialog').close();$('groupEditor').open=false;
+  message('Subgrups creats. Les columnes combinen el grup principal amb el filtre addicional. Pots editar cada subgrup i copiar la taula amb format. La diferència s’ha desactivat; la pots activar al selector.');
+ }catch(err){subgroupError(err.message);}
+};
+
+
 function renderGroups(){
  renderWaveSelector();
  $('globalFilters').innerHTML=config.globalFilters.map((f,i)=>filterHTML(f,i,'global')).join('');
- $('groups').innerHTML=config.groups.map((g,i)=>`<div class="group"><div class="group-head"><input data-group-name="${i}" value="${esc(g.name)}" aria-label="Nom del grup"><span class="badge">n = ${result?result.groups[i].n:'—'}</span><button class="quiet" data-delete-group="${i}" title="Elimina el grup">×</button></div><label class="group-mode">Compleix <select data-group-mode="${i}"><option value="all" ${g.mode==='all'?'selected':''}>totes les condicions</option><option value="any" ${g.mode==='any'?'selected':''}>alguna condició</option></select></label>${g.filters.map((f,j)=>filterHTML(f,j,i)).join('')}${!g.filters.length?'<p class="hint">Tota la mostra filtrada.</p>':''}<button class="add" data-add-filter="${i}">＋ Condició</button></div>`).join('');
+ $('groups').innerHTML=config.groups.map((g,i)=>`<div class="group"><div class="group-head"><input data-group-name="${i}" value="${esc(g.name)}" aria-label="Nom del grup"><span class="badge">n = ${result?result.groups[i].n:'—'}</span><button class="quiet" data-delete-group="${i}" title="Elimina el grup">×</button></div><label class="group-mode">Compleix <select data-group-mode="${i}"><option value="all" ${g.mode==='all'?'selected':''}>totes les condicions</option><option value="any" ${g.mode==='any'?'selected':''}>alguna condició</option></select></label>${g.filters.map((f,j)=>filterHTML(f,j,i)).join('')}${g.columnFilters?.length?'<p class="hint">I, a més, tots els filtres del subgrup:</p>'+g.columnFilters.map((f,j)=>filterHTML(f,j,'column:'+i)).join(''):''}${!g.filters.length?'<p class="hint">Tota la mostra filtrada.</p>':''}<button class="add" data-add-filter="${i}">＋ Condició</button></div>`).join('');
  $('weight').innerHTML='<option value="">Sense ponderació</option>'+headers.map(n=>`<option value="${esc(n)}" ${config.weight===n?'selected':''}>${esc(n)}</option>`).join('');
- $('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;$('exportName').value=config.exportName??'comparacio_ceo';$('reportOrientation').value=config.reportOrientation||'auto';
+ $('showCellN').checked=config.showCellN!==false;$('denominator').value=config.denominator;$('decimals').value=String(config.decimals);$('difference').value=config.difference?'yes':'no';$('tableTitle').value=config.title;$('exportName').value=config.exportName??'comparacio_ceo';$('reportOrientation').value=config.reportOrientation||'auto';
 }
 function renderPicker(){const query=E.norm($('indicatorSearch').value),list=variables(true).filter(n=>E.norm(n+' '+defs[n].label).includes(query));$('indicatorPicker').innerHTML=list.slice(0,100).map(n=>`<button class="pick ${config.indicators.some(i=>i.variable===n)?'selected':''}" data-pick="${esc(n)}">${config.indicators.some(i=>i.variable===n)?'✓ ':'＋ '}${esc(defs[n].label)}<span class="code">${esc(n)}</span></button>`).join('')+(list.length>100?'<p class="hint">Més de 100 variables. Afina la cerca.</p>':'');
- $('selectedCount').textContent=config.indicators.length;$('selectedIndicators').innerHTML=config.indicators.map((s,i)=>`<div class="selected-item"><div><span>${esc(defs[s.variable]?.label||s.variable)}</span><span><button class="quiet" data-up="${i}" title="Mou amunt">↑</button><button class="quiet" data-configure="${esc(s.variable)}" title="Configura">⚙</button><button class="quiet" data-remove-indicator="${i}" title="Elimina">×</button></span></div>${defs[s.variable]?.type==='number'?`<select data-stat="${i}" aria-label="Estadístic"><option value="mean" ${s.stat==='mean'?'selected':''}>Mitjana</option><option value="median" ${s.stat==='median'?'selected':''}>Mediana</option></select>`:'<span class="hint">Percentatge (n)</span>'}</div>`).join('');
+ $('selectedCount').textContent=config.indicators.length;$('selectedIndicators').innerHTML=config.indicators.map((s,i)=>`<div class="selected-item"><div><span>${esc(defs[s.variable]?.label||s.variable)}</span><span><button class="quiet" data-up="${i}" title="Mou amunt">↑</button><button class="quiet" data-configure="${esc(s.variable)}" title="Configura">⚙</button><button class="quiet" data-remove-indicator="${i}" title="Elimina">×</button></span></div>${defs[s.variable]?.type==='number'?`<select data-stat="${i}" aria-label="Estadístic"><option value="mean" ${s.stat==='mean'?'selected':''}>Mitjana</option><option value="median" ${s.stat==='median'?'selected':''}>Mediana</option></select>`:`<span class="hint">${config.showCellN===false?'Percentatge':'Percentatge (n)'}</span>`}</div>`).join('');
 }
 function renderDictionary(){const query=E.norm($('dictionarySearch').value);let list=variables(true).filter(n=>E.norm(n+' '+defs[n].label).includes(query));$('dictionaryRows').innerHTML=list.slice(0,150).map(n=>{const d=defs[n];return `<div class="dict-row"><div><b>${esc(d.label)}</b><span class="code">${esc(n)}</span></div><div class="source">${esc(d.source||'Regla personalitzada')}</div><span class="pill ${!d.confirmed?'pending':''}">${!d.confirmed?'Revisa orientació':d.type==='number'?'Numèrica':d.type==='multi'?'Resposta múltiple':'Categòrica'}</span><button class="quiet" data-configure="${esc(n)}">Edita ↗</button></div>`;}).join('')+(list.length>150?'<p class="hint">Més de 150 resultats. Fes servir la cerca.</p>':'');}
 function filterText(f){const d=defs[f.variable];let label=d?.label||f.variable;if(['valid','missing'].includes(f.op))return `${label}: ${f.op==='valid'?'resposta vàlida':'sense resposta vàlida'}`;if(['gte','lte'].includes(f.op))return `${label} ${f.op==='gte'?'≥':'≤'} ${f.value}`;const o=d?opts(f.variable):[];return `${label} ${f.op==='not'?'≠':'='} ${(f.values||[]).map(v=>o.find(x=>x.key===v)?.label||v).join(' / ')||'(cap opció)'}`;}
 function numericLabel(ind){return `${ind.label} (${ind.stat==='median'?'mediana':'mitjana'})`;}
-function numericValue(ind,stats){return `${fmt(stats[ind.stat])} (n = ${stats.valid})`;}
+function numericValue(ind,stats){return fmt(stats[ind.stat])+(config.showCellN===false?'':` (n = ${stats.valid})`);}
+function categoryValue(stats){return `${fmt(stats.pct)} %`+(config.showCellN===false?'':` (${stats.n})`);}
 function numericNotes(){
  const numeric=(result?.indicators||[]).filter(ind=>ind.type==='number'&&!ind.blocked);
  if(!numeric.length)return [];
- return ['Variables numèriques: mitjana o mediana segons l’etiqueta. El n de cada cel·la és la base vàlida sense ponderar; exclou els pesos invàlids quan hi ha ponderació.',
+ return ['Variables numèriques: mitjana o mediana segons l’etiqueta. '+(config.showCellN===false?'El nombre d’observacions per cel·la està ocult. Els càlculs utilitzen la base vàlida i exclouen els pesos invàlids quan hi ha ponderació.':'El n de cada cel·la és la base vàlida sense ponderar; exclou els pesos invàlids quan hi ha ponderació.'),
  ...numeric.filter(ind=>ind.stats.some(s=>s.missing||s.invalidWeight)).map(ind=>`${numericLabel(ind)} · ${ind.stats.map((s,i)=>`${result.groups[i].name}: absents = ${s.missing}${config.weight?'; pes invàlid = '+s.invalidWeight:''}`).join(' · ')}.`)];
 }
 function tableData(){if(!result)return [];const diff=config.difference&&result.groups.length>=2;const out=[['Indicador',...result.groups.map(g=>`${g.name} (n=${g.n})`),...(diff?['Diferència: '+result.groups[0].name+' - '+result.groups[1].name]:[])]];
@@ -56,7 +158,7 @@ function tableData(){if(!result)return [];const diff=config.difference&&result.g
   const stats=ind.stats;
   if(ind.type==='number'){const vals=stats.map(s=>s[ind.stat]);out.push([numericLabel(ind),...stats.map(s=>numericValue(ind,s)),...(diff?[diffText(vals[0],vals[1],'punts')]:[])]);continue;}
   out.push([ind.label,...stats.map(s=>`Base vàlida n=${s.valid}; absents=${s.missing}; pes invàlid=${s.invalidWeight}`),...(diff?['']:[])]);
-  for(const cat of ind.categories){const cs=stats.map(s=>s.counts.find(c=>c.key===cat.key)||{n:0,pct:s.base?0:null});out.push([cat.label,...cs.map(c=>`${fmt(c.pct)} % (${c.n})`),...(diff?[diffText(cs[0].pct,cs[1].pct,'pp')]:[])]);}
+  for(const cat of ind.categories){const cs=stats.map(s=>s.counts.find(c=>c.key===cat.key)||{n:0,pct:s.base?0:null});out.push([cat.label,...cs.map(categoryValue),...(diff?[diffText(cs[0].pct,cs[1].pct,'pp')]:[])]);}
  }
  return out;
 }
@@ -65,7 +167,7 @@ function diffHTML(a,b,unit){let v=a===null||b===null?null:a-b;return `<td class=
 function defaultNotes(){if(!result)return [];return [
  `Font: ${fileName}${isDemo?' · DADES SINTÈTIQUES, NO SÓN RESULTATS DEL CEO':''}. Mostra carregada: ${rows.length}; mostra filtrada: ${result.filtered}.`,
  `Filtres generals: ${config.globalFilters.length?config.globalFilters.map(filterText).join(' I '):'cap'}.`,
- ...config.groups.map(g=>`${g.name}: ${g.filters.length?g.filters.map(filterText).join(g.mode==='any'?' O ':' I '):'tota la mostra filtrada'}.`),
+ ...config.groups.map(g=>`${g.name}: ${groupFilterText(g)}.`),
  `${config.weight?'Ponderació: '+config.weight+'. Mitjanes i percentatges ponderats; n sense ponderar. Pes absent, nul, negatiu o no numèric: exclòs del càlcul.':'Sense ponderació. n = nombre d’entrevistes.'} Percentatges sobre ${config.denominator==='valid'?'les respostes vàlides de cada indicador':'totes les persones del grup amb pes vàlid'}.`,
  `Les bases vàlides exclouen no resposta, exclusions configurades i valors numèrics no reconeguts. La base de les mitjanes sempre és la vàlida. Les diferències es calculen abans d’arrodonir; punts per a escales i punts percentuals (pp) per a proporcions.`,
  ...numericNotes(),
@@ -172,7 +274,7 @@ function renderResults(){
  if(result?.groups.some(g=>g.n>0&&g.n<30))warn.push('Algun grup té menys de 30 entrevistes. Interpreta les diferències amb cautela.');
  $('warnings').innerHTML=[...new Set(warn)].map(t=>`<p class="warning">${esc(t)}</p>`).join('')+(result?.indicators||[]).filter(x=>x.blocked||x.stats?.some(s=>s.unknown)).map(x=>`<button class="secondary" data-configure="${esc(x.name)}">Revisa la variable: ${esc(x.label)}</button>`).join(' ');
  if(!result||!config.indicators.length){$('tableContainer').innerHTML='<div class="empty"><span class="empty-symbol">▥</span><h3>'+(!rows.length?'Una taula, moltes preguntes.':'Què vols comparar?')+'</h3><p>'+(!rows.length?'Carrega els microdades o obre l’exemple per començar.':'Selecciona indicadors al panell esquerre.')+'</p></div>';$('tableNotes').innerHTML='';return;}
- const diff=config.difference&&result.groups.length>=2;const span=result.groups.length+1+(diff?1:0);let html=`<table class="result-table"><thead><tr><th>Indicador</th>${result.groups.map(g=>`<th>${esc(g.name)}<span>n = ${g.n}</span></th>`).join('')}${diff?'<th>Diferència<span>Primer − segon grup</span></th>':''}</tr></thead><tbody>`;
+ const diff=config.difference&&result.groups.length>=2;const span=result.groups.length+1+(diff?1:0);const screenColumns=[...result.groups.map((g,index)=>({index,label:g.name+'\n(n = '+g.n+')'})),...(diff?[{index:'difference',label:'Diferència\nPrimer − segon grup'}]:[])];let html='<table class="result-table"><thead>'+CEOReport.headerHTML({headers:['Indicador',...screenColumns.map(c=>c.label)],...tableHeaders(screenColumns)})+'</thead><tbody>';
  for(const ind of result.indicators){
   if(ind.type==='number'){
    if(ind.blocked){html+=`<tr class="numeric-row"><td title="${esc(ind.name)}">${esc(ind.label)}</td><td colspan="${span-1}">Pendent de revisar l’orientació</td></tr>`;continue;}
@@ -181,14 +283,14 @@ function renderResults(){
   }
   html+=`<tr class="section-row"><td colspan="${span}">${esc(ind.label)}<small>${esc(ind.name)}${ind.type==='multi'?' · resposta múltiple':''}</small></td></tr>`;if(ind.blocked){html+=`<tr><td colspan="${span}">Pendent de confirmar l’orientació al diccionari.</td></tr>`;continue;}
   html+=`<tr class="base-row"><td>Base vàlida · absents${config.weight?' · pes invàlid':''}</td>${ind.stats.map(s=>`<td>${s.valid} · ${s.missing}${config.weight?' · '+s.invalidWeight:''}</td>`).join('')}${diff?'<td></td>':''}</tr>`;
-  for(const c of ind.categories){const vals=ind.stats.map(s=>s.counts.find(x=>x.key===c.key)||{n:0,pct:s.base?0:null});html+=`<tr><td>${esc(c.label)}</td>${vals.map(v=>`<td>${fmt(v.pct)} % (${v.n})</td>`).join('')}${diff?diffHTML(vals[0].pct,vals[1].pct,'pp'):''}</tr>`;}
+  for(const c of ind.categories){const vals=ind.stats.map(s=>s.counts.find(x=>x.key===c.key)||{n:0,pct:s.base?0:null});html+=`<tr><td>${esc(c.label)}</td>${vals.map(v=>`<td>${esc(categoryValue(v))}</td>`).join('')}${diff?diffHTML(vals[0].pct,vals[1].pct,'pp'):''}</tr>`;}
 
  }
  $('tableContainer').innerHTML=html+'</tbody></table>';renderNotesPreview();
 }
-function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();renderOrderEditor();for(const id of ['saveConfig','presetBtn','matrixBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
+function render(){try{result=rows.length?E.analyze(rows,defs,config):null;studyLines=result?[...result.studyLines]:[];renderGroups();renderPicker();renderDictionary();renderResults();renderOrderEditor();renderFiles();for(const id of ['presetBtn','matrixBtn','subgroupBtn','addGlobal','addGroup','multiBtn'])$(id).disabled=!rows.length;for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=!result||!config.indicators.length;}catch(e){message(e.message,true);result=null;studyLines=[];$('studyMetadata').innerHTML='';for(const id of ['copyBtn','exportBtn','htmlBtn','wordBtn','printBtn'])$(id).disabled=true;$('tableContainer').innerHTML='<p class="warning">El càlcul no s’ha completat. Revisa la configuració.</p>';}}
 function firstFilter(){const variable=headers[0];return {variable,op:'in',values:[]};}
-function install(data,name,demo=false){csvLoadId++;rows=data.rows;headers=data.headers;studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('orderEditor').open=false;$('orderRowsVariable').value='';$('orderStatus').textContent='';$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);render();}
+function install(data,name,demo=false){csvLoadId++;rows=data.rows;headers=[...data.headers];studyLines=[];defs=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));optionCache.clear();fileName=name;isDemo=demo;config=initial();$('orderEditor').open=false;$('orderRowsVariable').value='';$('orderStatus').textContent='';$('notesEditor').open=false;$('groupEditor').open=true;$('fileLabel').textContent=name;$('indicatorSearch').value='';$('dictionarySearch').value='';message(`${headers.length} variables i ${rows.length} entrevistes carregades.${demo?' Exemple sintètic.':' Revisa les escales i les recodificacions al diccionari.'}`);datasets=[{id:nextDatasetId++,data,name,active:true,demo}];render();}
 function readCSVBuffer(buffer,encoding='auto',delimiter='auto'){
  let text;
  if(encoding==='auto'){try{text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{text=new TextDecoder('windows-1252').decode(buffer);}}
@@ -198,12 +300,21 @@ function readCSVBuffer(buffer,encoding='auto',delimiter='auto'){
  return E.parseCSV(text,delimiter);
 }
 $('csvFile').addEventListener('change',async e=>{
- const f=e.target.files[0];if(!f)return;const loadId=++csvLoadId,encoding=$('encoding').value,delimiter=$('delimiter').value;
- message('Llegint el CSV.');
- try{const buffer=await f.arrayBuffer();if(loadId===csvLoadId)install(readCSVBuffer(buffer,encoding,delimiter),f.name);}
- catch(err){if(loadId===csvLoadId)message('No s’ha pogut carregar: '+err.message,true);}
+ const files=Array.from(e.target.files||[]);if(!files.length)return;
+ const loadId=++csvLoadId,encoding=$('encoding').value,delimiter=$('delimiter').value;
+ message('Llegint '+files.length+' fitxer(s) CSV…');
+ try{
+  const incoming=[];
+  for(const file of files){
+   const buffer=await file.arrayBuffer();if(loadId!==csvLoadId)return;
+   try{incoming.push({data:readCSVBuffer(buffer,encoding,delimiter),name:file.name});}
+   catch(err){throw Error(file.name+': '+err.message);}
+  }
+  if(loadId===csvLoadId)addDatasets(incoming);
+ }catch(err){if(loadId===csvLoadId)message('No s’ha afegit cap fitxer d’aquesta selecció. '+err.message,true);}
  finally{e.target.value='';}
 });
+
 function publishedCSVLocations(){
  const sources=[{label:'GitHub',url:REPOSITORY_RAW+encodeURIComponent(PUBLISHED_CSV)}];
  if(location.protocol!=='file:'){
@@ -233,9 +344,9 @@ $('latestCeoBtn').onclick=async()=>{
    try{data=await fetchPublishedCSV(source.url);}
    catch(err){errors.push(source.label+': '+(err.name==='AbortError'?'temps d’espera esgotat':err.message));continue;}
    if(loadId!==csvLoadId)return;
-   install(data,PUBLISHED_CSV);return;
+   addDatasets([{data,name:PUBLISHED_CSV}]);return;
   }
-  if(loadId===csvLoadId)message('No s’ha pogut carregar el CEO. '+errors.join(' | ')+'. Comprova que el CSV sigui públic a main. Pots tornar-ho a provar o utilitzar «Carrega CSV».',true);
+  if(loadId===csvLoadId)message('No s’ha pogut carregar el CEO. '+errors.join(' | ')+'. Comprova que el CSV sigui públic a main. Pots tornar-ho a provar o utilitzar «Afegeix CSV».',true);
  }finally{button.disabled=false;button.textContent='Carrega CEO · REO1169';}
 };
 
@@ -282,20 +393,23 @@ $('matrixApply').onclick=()=>{
 
 $('addGlobal').onclick=()=>{config.globalFilters.push(firstFilter());render();};$('addGroup').onclick=()=>{if(config.groups.length>=50){message('Es permeten fins a 50 grups.',true);return;}config.groups.push({name:'Grup '+(config.groups.length+1),mode:'all',filters:[]});render();};
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const ds=b.dataset;
+ if(ds.sourceRemove!==undefined){changeSource(Number(ds.sourceRemove),false,true);return;}
  if(ds.orderKind&&ds.orderStep!==undefined){if(!b.disabled)moveTableOrder(ds.orderKind,Number(ds.orderIndex),Number(ds.orderIndex)+Number(ds.orderStep));return;}
  if(ds.tab){document.querySelectorAll('.tab-panel').forEach(x=>x.hidden=x.id!==ds.tab);document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===ds.tab));}
  if(ds.pick){let i=config.indicators.findIndex(x=>x.variable===ds.pick);if(i>=0)config.indicators.splice(i,1);else config.indicators.push({variable:ds.pick,stat:'mean'});render();}
  if(ds.addFilter!==undefined){config.groups[Number(ds.addFilter)].filters.push(firstFilter());render();}
  if(ds.deleteGroup!==undefined){if(config.groups.length===1){message('Cal mantenir almenys un grup.',true);return;}config.groups.splice(Number(ds.deleteGroup),1);render();}
- if(ds.deleteFilter!==undefined){const p=b.closest('.filter');const list=p.dataset.scope==='global'?config.globalFilters:config.groups[Number(p.dataset.scope)].filters;list.splice(Number(p.dataset.index),1);render();}
+ if(ds.deleteFilter!==undefined){const p=b.closest('.filter');const list=filterList(p.dataset.scope);list.splice(Number(p.dataset.index),1);refreshSubgroupLabel(p.dataset.scope);render();}
  if(ds.removeIndicator!==undefined){config.indicators.splice(Number(ds.removeIndicator),1);render();}
  if(ds.up!==undefined){const i=Number(ds.up);if(i>0)[config.indicators[i-1],config.indicators[i]]=[config.indicators[i],config.indicators[i-1]];render();}
  if(ds.configure)editVariable(ds.configure);
 });
 document.addEventListener('change',e=>{const ds=e.target.dataset;
+ if(ds.subgroupKey!==undefined){previewSubgroups();return;}
+ if(ds.sourceActive!==undefined){changeSource(Number(ds.sourceActive),e.target.checked);return;}
  if(ds.orderKind){moveTableOrder(ds.orderKind,Number(ds.orderIndex),Number(e.target.value)-1);return;}
- if(ds.filter){const p=e.target.closest('.filter');const list=p.dataset.scope==='global'?config.globalFilters:config.groups[Number(p.dataset.scope)].filters;const f=list[Number(p.dataset.index)];if(ds.filter==='variable'){f.variable=e.target.value;f.op='in';f.values=[];}else if(ds.filter==='values')f.values=[...e.target.selectedOptions].map(x=>x.value);else f[ds.filter]=e.target.value;render();}
- if(ds.groupName!==undefined){config.groups[Number(ds.groupName)].name=e.target.value||'Grup';render();}
+ if(ds.filter){const p=e.target.closest('.filter');const list=filterList(p.dataset.scope);const f=list[Number(p.dataset.index)];if(ds.filter==='variable'){f.variable=e.target.value;f.op='in';f.values=[];}else if(ds.filter==='values')f.values=[...e.target.selectedOptions].map(x=>x.value);else f[ds.filter]=e.target.value;refreshSubgroupLabel(p.dataset.scope);render();}
+ if(ds.groupName!==undefined){const g=config.groups[Number(ds.groupName)];g.name=e.target.value||'Grup';delete g.headerParent;delete g.headerLabel;delete g.headerKey;render();}
  if(ds.groupMode!==undefined){config.groups[Number(ds.groupMode)].mode=e.target.value;render();}
  if(ds.stat!==undefined){config.indicators[Number(ds.stat)].stat=e.target.value;render();}
 });
@@ -319,16 +433,22 @@ function exportBaseName(){
  if(/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name))name='_'+name;
  return name;
 }
+$('showCellN').onchange=e=>{config.showCellN=e.target.checked;render();};
 $('exportName').oninput=()=>{config.exportName=$('exportName').value;};
 $('exportName').onchange=()=>{config.exportName=exportBaseName();$('exportName').value=config.exportName;};
 function download(content,name,type){const blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
-function reportData(){
+function tableHeaders(columns){
+ const bands=[null,...columns.map(c=>{const g=result.groups[c.index];return g?.headerParent?{label:g.headerParent,key:g.headerKey+'|'+g.headerParent}:null;})];
+ if(!bands.some(Boolean))return {};
+ return {headerBands:bands,headerLabels:['Indicador',...columns.map(c=>{const g=result.groups[c.index];return g?.headerParent?g.headerLabel+'\n(n = '+g.n+')':c.label;})]};
+}
+function reportData(wholeTable=false){
  if(!result||!config.indicators.length)throw Error('Selecciona indicadors abans d’exportar.');
  const difference=config.difference&&result.groups.length>=2;
  const page=CEOReport.layout(config.reportOrientation||'auto',result.groups.length+(difference?1:0));
- const sets=CEOReport.columnSets(result.groups,difference,page.orientation);
+ const sets=wholeTable?[[...result.groups.map((g,index)=>({index,label:g.name+'\n(n = '+g.n+')'})),...(difference?[{index:'difference',label:'Diferència\n'+result.groups[0].name+' - '+result.groups[1].name}]:[])]]:CEOReport.columnSets(result.groups,difference,page.orientation);
  const tables=sets.map(columns=>{
-  const table={label:columns.filter(c=>c.index!=='difference').map(c=>result.groups[c.index].name).join(' · '),headers:['Indicador',...columns.map(c=>c.label)],rows:[]};
+  const table={label:columns.filter(c=>c.index!=='difference').map(c=>result.groups[c.index].name).join(' · '),headers:['Indicador',...columns.map(c=>c.label)],...tableHeaders(columns),rows:[]};
   for(const ind of result.indicators){
    if(ind.blocked){table.rows.push({kind:'notice',cells:[ind.label+': pendent de comprovar l’orientació de l’escala. No s’ha calculat cap resultat.']});continue;}
    if(ind.type==='number'){
@@ -339,7 +459,7 @@ function reportData(){
    table.rows.push({kind:'base',cells:['Base vàlida · absents'+(config.weight?' · pes invàlid':''),...columns.map(c=>{if(c.index==='difference')return '';const v=ind.stats[c.index];return v.valid+' · '+v.missing+(config.weight?' · '+v.invalidWeight:'');})]});
    for(const category of ind.categories){
     const values=ind.stats.map(v=>v.counts.find(c=>c.key===category.key)||{n:0,pct:v.base?0:null});
-    table.rows.push({kind:'data',cells:[category.label,...columns.map(c=>c.index==='difference'?diffText(values[0].pct,values[1].pct,'pp'):fmt(values[c.index].pct)+' % ('+values[c.index].n+')')]});
+    table.rows.push({kind:'data',cells:[category.label,...columns.map(c=>c.index==='difference'?diffText(values[0].pct,values[1].pct,'pp'):categoryValue(values[c.index]))]});
    }
   }
 
@@ -361,18 +481,41 @@ function printReport(){
 $('exportBtn').onclick=()=>{const data=[[config.title],...studyLines.map(line=>[line]),...tableData(),[],...notesText().map(t=>[t])];download('\uFEFF'+data.map(r=>r.map(E.csvCell).join(';')).join('\r\n'),exportBaseName()+'.csv','text/csv;charset=utf-8');};
 $('htmlBtn').onclick=()=>download(exportHTML(),exportBaseName()+'.html','text/html;charset=utf-8');$('printBtn').onclick=()=>{try{printReport();}catch(e){message(e.message,true);}};
 $('wordBtn').onclick=()=>{try{download(CEOReport.docx(reportData()),exportBaseName()+'.docx',CEOReport.mime);}catch(e){message('No s’ha pogut exportar Word: '+e.message,true);}};
-$('copyBtn').onclick=async()=>{const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notesText()].join('\n');try{if(navigator.clipboard&&typeof ClipboardItem!=='undefined'){await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([exportHTML()],{type:'text/html'})})]);}else throw Error();message('Taula copiada. Enganxa-la al document.');}catch{const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();message(ok?'Taula copiada com a text amb tabuladors.':'No s’ha pogut copiar. Utilitza l’exportació HTML o CSV.',!ok);}};
-$('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName},null,2),exportBaseName()+'.json','application/json');
-function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');const c=s.config;if(c.exportName!==undefined&&typeof c.exportName!=='string')throw Error('Nom del fitxer no vàlid.');if(c.reportNotes!==undefined){const n=c.reportNotes;if(!n||typeof n!=='object'||Array.isArray(n)||['custom','visible'].some(k=>n[k]!==undefined&&typeof n[k]!=='boolean')||['text','title'].some(k=>n[k]!==undefined&&typeof n[k]!=='string'))throw Error('Notes de l’informe no vàlides.');}if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const sel of c.indicators)if(sel.categoryOrder!==undefined&&(!Array.isArray(sel.categoryOrder)||sel.categoryOrder.some(key=>typeof key!=='string')||new Set(sel.categoryOrder).size!==sel.categoryOrder.length))throw Error('Ordre de respostes no vàlid.');for(const g of c.groups)if(!Array.isArray(g.filters)||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>g.filters)])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
-function usedColumns(s){const used=new Set([...s.config.globalFilters.map(f=>f.variable),...s.config.groups.flatMap(g=>g.filters.map(f=>f.variable)),...s.config.indicators.map(i=>i.variable),...(s.config.weight?[s.config.weight]:[])]);for(const n of [...used])if(s.definitions[n]?.type==='multi'){used.delete(n);for(const src of s.definitions[n].sources)used.add(src);}return [...used];}
-$('configFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(!rows.length)throw Error('Carrega primer el CSV de la nova onada.');const saved=JSON.parse(await f.text());validateSaved(saved);const missing=usedColumns(saved).filter(n=>!headers.includes(n));if(missing.length){pendingConfig=saved;$('mappingFields').innerHTML=missing.map((n,i)=>`<label class="field">${esc(n)}<select data-map-column="${i}" data-old="${esc(n)}"><option value="">Elimina’n els usos</option>${varOptions()}</select></label>`).join('');$('mappingDialog').showModal();}else applySaved(saved,{});}catch(err){message(err.message,true);}finally{e.target.value='';}};
+function legacyCopyTable(text,html){
+ const area=document.createElement('textarea');area.value=text;area.style.cssText='position:fixed;left:-10000px;top:0';
+ let rich=false;const listener=e=>{if(!e.clipboardData)return;try{e.clipboardData.setData('text/html',html);e.clipboardData.setData('text/plain',text);e.preventDefault();rich=true;}catch{}};
+ document.body.append(area);document.addEventListener('copy',listener);
+ try{area.select();const ok=document.execCommand('copy');return ok?(rich?'rich':'plain'):false;}
+ finally{document.removeEventListener('copy',listener);area.remove();}
+}
+$('copyBtn').onclick=async()=>{
+ if(!result||!config.indicators.length)return;
+ const text=[config.title,...studyLines,...tableData().map(r=>r.join('\t')),'',...notesText()].join('\n');
+ const html=CEOReport.clipboardHTML(reportData(true));
+ try{
+  if(!navigator.clipboard||typeof ClipboardItem==='undefined')throw Error('No clipboard API');
+  await navigator.clipboard.write([new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'}),'text/html':new Blob([html],{type:'text/html'})})]);
+  message('Taula copiada amb format. Enganxa-la a Word amb Ctrl+V i «Mantén el format d’origen».');
+ }catch{
+  try{const copied=legacyCopyTable(text,html);message(copied==='rich'?'Taula copiada amb format. Enganxa-la al document amb Ctrl+V.':copied==='plain'?'Taula copiada com a text amb tabuladors. Per conservar el format, exporta Word.':'El navegador no permet copiar. Exporta Word o selecciona i copia la taula manualment.',!copied);}
+  catch{message('El navegador no permet copiar. Exporta Word o selecciona i copia la taula manualment.',true);}
+ }
+};
+$('saveConfig').onclick=()=>download(JSON.stringify({app:'ceo-explorador',version:1,config,definitions:defs,columns:headers,sourceFile:fileName,sourceFiles:sourceManifest()},null,2),exportBaseName()+'.json','application/json');
+function validateSaved(s){if(s?.app!=='ceo-explorador'||s.version!==1||!s.config||!s.definitions)throw Error('No és una configuració compatible (v1).');if(s.sourceFiles!==undefined&&(!Array.isArray(s.sourceFiles)||s.sourceFiles.some(f=>!f||typeof f.name!=='string'||typeof f.active!=='boolean'||!Number.isInteger(f.rowCount)||f.rowCount<0||!Array.isArray(f.columns)||f.columns.some(h=>typeof h!=='string'))))throw Error('Llista de fitxers desada no vàlida.');const c=s.config;if(c.showCellN!==undefined&&typeof c.showCellN!=='boolean')throw Error('Opció d’observacions per cel·la no vàlida.');if(c.exportName!==undefined&&typeof c.exportName!=='string')throw Error('Nom del fitxer no vàlid.');if(c.reportNotes!==undefined){const n=c.reportNotes;if(!n||typeof n!=='object'||Array.isArray(n)||['custom','visible'].some(k=>n[k]!==undefined&&typeof n[k]!=='boolean')||['text','title'].some(k=>n[k]!==undefined&&typeof n[k]!=='string'))throw Error('Notes de l’informe no vàlides.');}if(c.reportOrientation!==undefined&&!['auto','portrait','landscape'].includes(c.reportOrientation))throw Error('Orientació no vàlida.');if(!Array.isArray(c.groups)||!c.groups.length||c.groups.length>50||!Array.isArray(c.indicators)||!Array.isArray(c.globalFilters))throw Error('Configuració incompleta.');if(!['valid','all'].includes(c.denominator)||![0,1,2].includes(c.decimals))throw Error('Opcions estadístiques no vàlides.');for(const sel of c.indicators)if(sel.categoryOrder!==undefined&&(!Array.isArray(sel.categoryOrder)||sel.categoryOrder.some(key=>typeof key!=='string')||new Set(sel.categoryOrder).size!==sel.categoryOrder.length))throw Error('Ordre de respostes no vàlid.');for(const g of c.groups)if(!Array.isArray(g.filters)||(g.columnFilters!==undefined&&!Array.isArray(g.columnFilters))||['headerParent','headerLabel','headerKey'].some(k=>g[k]!==undefined&&typeof g[k]!=='string')||!['all','any'].includes(g.mode))throw Error('Grup no vàlid.');for(const f of [...c.globalFilters,...c.groups.flatMap(g=>E.groupFilters(g))])if(!['in','not','gte','lte','valid','missing'].includes(f.op)||typeof f.variable!=='string'||(['in','not'].includes(f.op)&&!Array.isArray(f.values)))throw Error('Filtre no vàlid.');for(const d of Object.values(s.definitions))if(!['category','number','multi'].includes(d.type)||!d.map||!d.aliases||!d.labels||!Array.isArray(d.missingCodes))throw Error('Diccionari no vàlid.');}
+function usedColumns(s){const used=new Set([...s.config.globalFilters.map(f=>f.variable),...s.config.groups.flatMap(g=>E.groupFilters(g).map(f=>f.variable)),...s.config.indicators.map(i=>i.variable),...(s.config.weight?[s.config.weight]:[])]);for(const n of [...used])if(s.definitions[n]?.type==='multi'){used.delete(n);for(const src of s.definitions[n].sources)used.add(src);}return [...used];}
+$('configFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(!datasets.length)throw Error('Carrega primer els CSV de la sessió.');const saved=JSON.parse(await f.text());validateSaved(saved);const missing=usedColumns(saved).filter(n=>!headers.includes(n));if(missing.length){pendingConfig=saved;$('mappingFields').innerHTML=missing.map((n,i)=>`<label class="field">${esc(n)}<select data-map-column="${i}" data-old="${esc(n)}"><option value="">Elimina’n els usos</option>${varOptions()}</select></label>`).join('');$('mappingDialog').showModal();}else applySaved(saved,{});}catch(err){message(err.message,true);}finally{e.target.value='';}};
 $('cancelMapping').onclick=()=>{$('mappingDialog').close();pendingConfig=null;};$('applyMapping').onclick=()=>{try{const map=Object.fromEntries([...document.querySelectorAll('[data-map-column]')].map(s=>[s.dataset.old,s.value]));applySaved(pendingConfig,map);$('mappingDialog').close();pendingConfig=null;}catch(e){alert(e.message);}};
 function applySaved(saved,map){const c=structuredClone(saved.config),next=Object.fromEntries(headers.map(n=>[n,E.definition(n)]));const rename=n=>Object.hasOwn(map,n)?map[n]:n;
  if(c.globalFilters.some(f=>!rename(f.variable)))throw Error('Cal assignar totes les variables dels filtres generals per evitar ampliar la mostra.');if(c.weight&&!rename(c.weight))throw Error('Cal assignar la variable de ponderació.');
  for(const [old,d] of Object.entries(saved.definitions)){const n=rename(old);if(!n)continue;if(d.type==='multi'){const sources=d.sources.map(rename);if(sources.every(src=>headers.includes(src)))next[n]={...d,name:n,sources};}else if(headers.includes(n))next[n]={...d,name:n,aliases:{...E.definition(n).aliases,...d.aliases}};}
- const filter=f=>({...f,variable:rename(f.variable)});c.globalFilters=c.globalFilters.map(filter);c.groups=c.groups.filter(g=>g.filters.every(f=>!!rename(f.variable))).map(g=>({...g,filters:g.filters.map(filter)}));if(!c.groups.length)throw Error('No queda cap grup. Cal assignar les variables que defineixen els grups.');c.indicators=c.indicators.map(i=>({...i,variable:rename(i.variable)})).filter(i=>Object.hasOwn(next,i.variable));c.weight=c.weight?rename(c.weight):'';
+ const filter=f=>({...f,variable:rename(f.variable)});c.globalFilters=c.globalFilters.map(filter);c.groups=c.groups.filter(g=>E.groupFilters(g).every(f=>!!rename(f.variable))).map(g=>({...g,filters:g.filters.map(filter),...(g.columnFilters?{columnFilters:g.columnFilters.map(filter)}:{})}));if(!c.groups.length)throw Error('No queda cap grup. Cal assignar les variables que defineixen els grups.');c.indicators=c.indicators.map(i=>({...i,variable:rename(i.variable)})).filter(i=>Object.hasOwn(next,i.variable));c.weight=c.weight?rename(c.weight):'';
  // L’orientació de l’eix nacional es confirma a cada càrrega, fins i tot amb una anàlisi desada.
  for(const [n,d] of Object.entries(next))if(/^ESP_CAT_0_10/.test(n.toUpperCase()))d.confirmed=false;
- E.analyze(rows,next,c);config=c;defs=next;optionCache.clear();message('Anàlisi restaurada. Revisa les categories noves, les equivalències i l’orientació de les escales d’aquesta onada.');render();}
+ const sourceSelection=savedSourceSelection(saved);
+ const selectedRows=sourceSelection?datasets.filter(d=>sourceSelection.get(d.id)===true).flatMap(d=>d.data.rows):rows;
+ E.analyze(selectedRows,next,c);config=c;defs=next;
+ if(sourceSelection){for(const d of datasets)d.active=sourceSelection.get(d.id)===true;syncDatasetRows();}
+ optionCache.clear();message('Anàlisi restaurada. Revisa les categories noves, les equivalències i l’orientació de les escales d’aquesta onada.');render();if(saved.sourceFiles&&!sourceSelection)message('Anàlisi restaurada. La llista de CSV no coincideix amb la desada: es manté la selecció actual de fitxers. Revisa les equivalències i les escales.');}
 $('demoBtn').onclick=()=>{const h=['INT_PARLAMENT_VOT','INT_PARLAMENT_VOT2','IDEOL_0_10','ESP_CAT_0_10','EDAT_GR','ESTUDIS_1_15','LLOC_NAIX','MUNICIPI_EXEMPLE','PES_EXEMPLE','PROBLEMES_1','PROBLEMES_2'];const r=[];for(let i=0;i<240;i++){const a=i%3===0,ix=i%11;r.push({INT_PARLAMENT_VOT:a?'ERC':'PSC/PSOE',INT_PARLAMENT_VOT2:a?'PSC/PSOE':'ERC',IDEOL_0_10:i%23===0?'No ho sap':ix===0?'Extrema esquerra':ix===10?'Extrema dreta':String((i*7%7)+(a?1:2)),ESP_CAT_0_10:String(4+i%5),EDAT_GR:String(1+(i*7%5)),ESTUDIS_1_15:String(1+i%15),LLOC_NAIX:['A Catalunya','A altres comunitats autònomes','Fora d’Espanya'][i%3],MUNICIPI_EXEMPLE:i%4?'Resta de Catalunya':'Barcelona',PES_EXEMPLE:String([0.8,1,1.2][i%3]),PROBLEMES_1:['Habitatge','Sanitat','Seguretat'][i%3],PROBLEMES_2:i%5===0?'Habitatge':''});}install({headers:h,rows:r},'EXEMPLE_SINTETIC.csv',true);preset();};
 render();
