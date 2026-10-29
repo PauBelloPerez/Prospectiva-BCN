@@ -244,3 +244,19 @@ Pruebas automatizadas: cruce de edad y sexo, condiciones OR del grupo principal,
 ### v1.11.1 · Observacions per cel·la
 
 Al costat del format de l’informe, desmarca «Mostra n a cada cel·la» per mostrar només percentatges, mitjanes i medianes. Es mantenen les bases dels indicadors i el n de les capçaleres. S’aplica a la taula, al porta-retalls i a CSV, HTML, Word i PDF. La preferència es desa amb l’anàlisi; les sessions antigues continuen mostrant el n. No canvia els càlculs.
+
+
+### v1.12.0 · Taula simple i bateries
+
+El selector «Tipus de taula» permet triar:
+- **Comparació de grups**: el comportament habitual.
+- **Taula simple · Total de la mostra**: una columna Total, amb un indicador o diversos en blocs de files.
+- **Bateria · Variables en columnes**: selecciona les preguntes de resposta única al panell d’indicadors. Les variables són les columnes i les respostes compartides, les files. Pots canviar els noms amb el menú de la variable.
+
+Els dos modes nous utilitzen tots els casos que compleixen els filtres generals. Els grups de comparació es conserven, però no s’apliquen fins que tornis al mode de grups. La ponderació i el denominador seleccionats continuen vigents. Cada pregunta té la seva base vàlida: no es força una mostra comuna amb totes les respostes completes. Per exigir-la, afegeix filtres generals «Té una resposta vàlida» per a les preguntes corresponents.
+
+La bateria alinea les categories per l’etiqueta recodificada i mostra la unió de les respostes observades. Revisa que les variables comparteixin realment l’escala; unifica etiquetes al diccionari si cal. Els codis sense etiqueta no permeten verificar el significat de la resposta. Una categoria sense casos es mostra amb zero si hi ha denominador; una base buida es mostra amb un guió. Les preguntes no formulades o sense resposta compten com a absents segons la codificació del CSV: l’aplicació no dedueix els salts del qüestionari.
+
+«Ordena files i columnes» permet ordenar les preguntes i les respostes de la bateria de manera independent. Les variables numèriques o de resposta múltiple no s’ometen silenciosament: es demana revisar la selecció. Màxim de 50 preguntes per bateria. L’opció de mostrar n, les notes, el nom del fitxer, la còpia amb format i les exportacions continuen disponibles. Word/PDF/HTML divideixen les bateries amples segons l’orientació; el porta-retalls manté una sola taula. El mode i l’ordre es desen amb l’anàlisi.
+
+Verificació: proves automatitzades amb dades sintètiques i DOM simulat per a bases ponderades diferents, absents, filtres, alineació per etiqueta, ordre, configuracions desades, seleccions no vàlides i exportacions. Sense verificació visual en Word o navegador.

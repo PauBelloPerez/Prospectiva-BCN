@@ -104,7 +104,7 @@ function parts(report){
   'word/styles.xml':styles(page,report.notesStyle),
   'word/_rels/document.xml.rels':declaration+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
   'docProps/core.xml':declaration+`<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xml(report.title)}</dc:title><dc:creator>Prospectiva · Explorador CEO</dc:creator><dc:language>ca-ES</dc:language></cp:coreProperties>`,
-  'docProps/app.xml':declaration+'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Prospectiva · Explorador CEO</Application><AppVersion>1.11.1</AppVersion></Properties>'
+  'docProps/app.xml':declaration+'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Prospectiva · Explorador CEO</Application><AppVersion>1.12.0</AppVersion></Properties>'
  };
 }
 // ZIP estàndard sense compressió: evita carregar biblioteques des d’Internet.
